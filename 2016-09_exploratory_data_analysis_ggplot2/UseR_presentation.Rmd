@@ -1,0 +1,290 @@
+---
+title: "Presentation"
+author: "Alexandru Papiu"
+date: "July 29, 2016"
+output:
+  html_document:
+    fig_height: 5
+    fig_width: 7
+    highlight: tango
+    theme: readable
+---
+
+###Exploratory Data Analysis in R with ggplot2:
+
+
+We are going to be looking at a dataset on wages and other data for a group of 3000 workers and learn how to use ggplot2 to answer questions about our data. 
+
+What is ggplot2? From their [site](http://ggplot2.org/) ggplot2 is a plotting system for R, based on the grammar of graphics by Leland Wilkinson. Written by Hadley Wickham while he was a grad student at Iowa State
+
+
+Loading the packages we need:
+```{r, message = FALSE}
+#uncomment the lines below if you don't have the packages.
+#install.packages("ggplot2")
+#install.packages("dplyr")
+#install.packages("ISLR")
+
+library(ggplot2) #data visualization
+library(dplyr) #data manipulation
+library(ISLR) #for the dataset
+```
+
+
+
+```{r}
+Wage = select(Wage, age, maritl, education, jobclass, wage) #select only some columns to make life easier
+#View(Wage)
+```
+
+Let's take a look at the datset:
+
+```{r}
+head(Wage, 3)
+```
+
+```{r}
+str(Wage)
+```
+
+We have 2 numeric variables: age and wage, and 3 categorical variables: marital status, education and jobclass. It will be important to distinguish between different types of variables since each type will require different visualization techniques.
+
+Now we'd like to visualize the data and learn more about ggplot while at it.
+
+Some questions:   
+
+- What is the distribution of the wage? (numeric)
+- What is the relationship between age and wage? (numeric vs. numeric)
+- How about between education and wage? (categorical vs. numeric)
+- What is the relationship between age and marital status? (numerical vs. categorical)
+
+
+How do we make a plot in ggplot2? 
+Here is the recipie for _any_ plot:
+
+## `ggplot(data, aes(variables)) + geoms`
+
+A few observations:
+
+- The data should always be a data.frame
+- Put the variables (columns in your dataframe) inside aes.
+- Use the geoms you wants
+
+
+### What is the relationship between age and wage?
+
+Just running `ggplot` gives us a blank canvas for our great visualizations:
+```{r}
+ggplot()
+```
+
+If we add the variables, ggplot draws the axes only since we haven't told it what type of plot we want.
+
+```{r}
+ggplot(data = Wage, mapping = aes(x = age, y = wage))
+```
+
+
+Finally we can use geoms to tell ggplot what type of plot we want.
+
+```{r}
+ggplot(data = Wage, aes(x = age, y = wage)) + 
+    geom_point() + ggtitle("Wage versus Age")
+```
+
+We have our first ggplot plot, pretty cool! The cool thing is that every plot we will ever make will have roughly the same structure:
+
+## `ggplot(data, aes(variables)) + geoms`
+
+
+#### What is the distribution of the wage? (numeric) 
+
+```{r}
+ggplot(Wage, aes(x = wage)) +
+    geom_histogram(bins = 40, color = "black") 
+```
+
+
+ggplot is more verbose than base R for simple / canned graphics but less verbose for complex / custom graphics.
+
+This syntax might take a bit to get used to but once you have it set up all you have to do is change the geom and/or the variables inside aes and you can create any plot that you can think of.
+
+
+Hint: if you don't know what geom you want just type `geom` and press tab to see all possible geom's.
+
+### Stack layers on top of each other using different geoms: 
+
+Ggplot's real power comes when you want to build more complex graphics with multiple layers. Doing this in ggplot is easy: just add more geoms!
+
+```{r}
+ggplot(data = Wage, mapping = aes(x = age, y = wage)) +
+    geom_bin2d() +
+    geom_point()
+
+```
+
+```{r}
+ggplot(data = Wage, mapping = aes(x = age, y = wage)) +
+    geom_bin2d() +
+    geom_point() +
+    geom_density_2d()
+```
+
+Here we're using 3 layers to get more info on the structure of the relationship. Is this a good visualization however? I'd say no, there is too much going on.
+
+### Inside the geoms you can fine tune your visualization:
+
+Use `?geom_point` if you don't know what you can customize. Chances are if you want something changed ggplot can do it for you.
+
+```{r}
+ggplot(Wage, aes(x = age, y = wage)) +
+    geom_point(alpha = 0.5, color = "orange", size = 5, shape = 4) 
+```
+
+### Dealing with Overplotting:
+
+Let's go back to the original question:
+
+```{r}
+ggplot(data = Wage, mapping = aes(x = age, y = wage)) +
+    geom_point()
+```
+
+Too many overlapping points. Let's reduce the opacity of the points using `alpha`. And add a trend line using `geom_smooth`.
+
+```{r}
+ggplot(data = Wage, mapping = aes(x = age, y = wage)) +
+    geom_point(alpha = 0.5) +
+    geom_smooth()
+```
+
+Other ways: jitter the points or use geom_count or geom_hex:
+
+```{r}
+ggplot(Wage, aes(x = age, y = wage)) + geom_count()  #+ geom_jitter()
+```
+
+```{r}
+ggplot(Wage, aes(x = age, y = wage)) + geom_hex()
+```
+
+
+### A closer look at aes - or how to pick your variables:
+Say you'd like to color your points based on another categorical variable - all you have to do is place color =  categorical variable **inside** the aes function. If it is not inside aes ggplot will not look in the dataframe for the respective column.
+
+```{r}
+ggplot(data = Wage, mapping = aes(x = age, y = wage, color = education)) +
+    geom_point()
+```
+
+Aes can be tricky but you can always overwrite the overall aes with putting an aes in your geom:
+
+```{r}
+ggplot(data = Wage, mapping = aes(x = age, y = wage, color = education)) +
+    geom_point(color = "black", aes(shape = maritl)) +
+    #geom_smooth() +
+    facet_grid(maritl ~ education)
+```
+
+
+
+### Categorical Variables:
+
+#### Getting back to another question: What is the relationship between education and wage? 
+
+
+```{r}
+ggplot(Wage, aes(x = education, y = wage)) +
+    geom_boxplot()
+```
+
+
+
+```{r}
+ggplot(Wage, aes(x = education, y = wage, color = jobclass)) +
+    geom_boxplot() 
+```
+
+
+### Faceting - building multiple plots based on categorical variables in the data:
+
+```{r, fig.height= 6, fig.width=8}
+ggplot(Wage, aes(x = wage))  +
+    geom_histogram()  +
+    facet_wrap( ~ education)
+```
+
+
+```{r, fig.height= 6, fig.width=8}
+ggplot(data = Wage, mapping = aes(x = age, y = wage)) +
+    geom_point() +
+    geom_smooth(aes(color = education)) +
+    facet_wrap( ~ education) +
+    ggtitle("Wage by Age and Education")
+```
+
+
+#### What is the relationship between age and marital status?
+
+```{r}
+ggplot(Wage, aes(x = age, fill = maritl)) + 
+    geom_histogram(bins = 20, color = "black", position = "fill") + 
+    xlim(18, 60) + 
+    scale_fill_brewer(palette = "Set1")
+    
+```
+
+
+Categorical vs. Categorical? - This one's a bit tougher.
+Maybe maritl and education
+
+
+```{r}
+ggplot(Wage, aes(x = education, fill = maritl)) +
+           geom_bar(position = "fill") 
+```
+
+
+
+
+
+Issues:
+
+- ggplot syntax is confusing/hard: 
+    - The documentation is great: ?geom_bar, ?ggplot,
+    - http://www.cookbook-r.com/Graphs/ 
+    - cheatsheet: https://www.rstudio.com/wp-content/uploads/2015/03/ggplot2-cheatsheet.pdf
+
+- ggplot is slow with larger datasets - use dplyr/data.table beforehand to do the aggregating, or use base R graphs.
+
+- ggplot is static and 2D - use plotly::ggplotly for interactive and plotly for 3D graphs.
+
+
+
+```{r, eval=FALSE}
+plotly::ggplotly(
+ggplot(data = sample_n(Wage, 1000), mapping = aes(x = age, y = wage, color = education)) +
+    geom_jitter())
+```
+
+Some dplyr stuff we probably won't get to:
+
+```{r}
+count(Wage, maritl) %>% 
+    ggplot(aes(x = reorder(maritl, n), y = n)) +
+    geom_bar(stat = "identity")
+```
+
+```{r}
+
+Wage %>% 
+    group_by(age) %>% 
+    summarise(mean_wage = mean(wage), count = n(), std = sd(wage)) %>% 
+    mutate(se = std/sqrt(count)) %>% 
+    ggplot(aes(x = age, y = mean_wage)) + geom_point() + geom_line() +
+    geom_line(aes(y = mean_wage + 2*se), color = "grey") +
+    geom_line(aes(y = mean_wage - 2*se), color = "grey")
+```
+
+
+
