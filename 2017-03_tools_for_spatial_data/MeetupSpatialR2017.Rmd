@@ -1,0 +1,390 @@
+---
+title: "Tools for using spatial data within R"
+author: "Cindy Traub, Ph.D."
+date: "3/9/2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library("dplyr")
+library("data.table")
+#library("readr")
+#library("maps")
+library("ggplot2")
+library("ggthemes")
+```
+
+# Mapping Metrolink and STL Metro bus routes
+
+Inspired by the maps on <http://jkunst.com/r/plotting-gtfs-data-with-r/>, I set out to adapt the code and map the Metro system in St. Louis, Missouri.
+
+The site <https://www.metrostlouis.org/developer-resources/> contains links to the General Transit Specification Feed (GTFS) Data for Metro Transit - St. Louis. The zip file located at the link for "Metro Transit – St. Louis GTFS Data Feed" downloaded March 6, 2017, contains the files:
+
+* agency.txt
+* calendar_dates.txt
+* calendar.txt
+* routes.txt
+* shapes.txt
+* stop_times.txt
+* stops.txt
+* trips.txt
+
+From this, stops.txt and shapes.txt will allow us to draw out the routes of both Metro bus and Metrolink lines.
+
+```{r examineShapes}
+# Update the location of the STL GTFS files
+STLmapPath<- "C:/Users/cindytraub/Box Sync/CT_presentations/MeetupSpatialR/gtfs_STL/" 
+# STLmapPath<- "/Users/CTatWUSTL/Box Sync/CT_presentations/MeetupSpatialR/gtfs_STL/" 
+
+# read in the shapes csv
+shapes <- fread(paste0(STLmapPath,"shapes.txt")) # Reads in file regardless of working dir
+dim(shapes)
+summary(shapes)
+
+# examine shapes
+head(shapes,10)
+shapes[, length(unique(shape_id))]
+shapes[,.N, shape_id]
+```
+
+
+## Map all transit routes
+```{r firstMap}
+p <- ggplot(shapes) +
+  geom_path(aes(shape_pt_lon, shape_pt_lat, group = shape_id), 
+            size = .1, alpha = .1) +
+  coord_equal() + theme_map()
+p
+```
+
+This gives us an interesting view of major roads in the area, but is pretty heavy in terms of data (see dimensions of shapes data table).  It is also distorted, because treating longitude and latitude as $x$ and $y$ coordinates for the sake of plotting is not an accurate representation of the physical earth.  It works fine for exploratory plotting, however.  For a detailed presentation of how to make maps within ggplot using ggmap, see the vignette by Robin Lovelace at <https://github.com/Robinlovelace/Creating-maps-in-R/blob/master/vignettes/ggmap.Rmd>.
+
+## Examine other GTFS files
+```{r routes_trips_stops}
+routes <- fread(paste0(STLmapPath,"routes.txt")) 
+dim(routes)
+head(routes,10)
+summary(routes)
+routes[route_type==2] # note this got the MetroLink routes only
+
+trips <- fread(paste0(STLmapPath,"trips.txt"))
+dim(trips)
+head(trips,10)
+
+stops <- fread(paste0(STLmapPath,"stops.txt"))
+dim(stops)
+head(stops,10)
+summary(stops)
+```
+
+## Where are the Metrolink stops?
+```{r findMetrolinkStops}
+head(stops$stop_name,20)
+stops[grep("METRO", stops$stop_name), stop_name] # some are bus stops
+stops[grep("METROLINK STATION", stops$stop_name), stop_name] # NO bus stops
+setdiff(stops[grep("METRO", stops$stop_name),stop_name],stops[grep("METROLINK STATION", stops$stop_name),stop_name])
+
+(stops_metro <- stops[grep("METROLINK STATION", stops$stop_name)])
+stops_notmetro <- setdiff(stops, stops_metro)
+routes_metro <- routes[route_type==2]
+
+shapes_metro <- shapes %>%
+  filter(shape_id %in% trips$shape_id[trips$route_id %in% routes_metro$route_id]) %>%
+  arrange(shape_id, shape_pt_sequence)
+### or, if you prefer data.table subsetting
+shapes_metro.dt <- shapes[shape_id%in% trips[route_id%in% routes_metro$route_id, shape_id]]
+setkey(shapes_metro.dt, shape_id, shape_pt_sequence)
+
+shapes_colors <- left_join(left_join(shapes %>% select(shape_id) %>% unique(),
+                                     trips %>% select(shape_id, route_id) %>% unique(),
+                                     by = "shape_id"),
+                           routes %>% select(route_id, route_color) %>% unique(),
+                           by = "route_id") %>%
+  mutate(route_color = paste0("#", route_color))
+
+shapes_colors_metro <- shapes_colors %>%
+  filter(shape_id %in% trips$shape_id[trips$route_id %in% routes_metro$route_id]) %>% unique() %>%  arrange(shape_id)
+```
+
+## First map of Metrolink route
+```{r plotMetrolink}
+p2 <- ggplot() + geom_path(data = shapes_metro.dt,
+            aes(shape_pt_lon, shape_pt_lat, group = shape_id, color = factor(shape_id)),
+            size = 2, alpha = .7) +
+  scale_color_manual(values = shapes_colors_metro$route_color) +
+  geom_point(data = stops_metro,
+             aes(stop_lon, stop_lat), shape = 21, colour = "white", alpha = 1) +
+coord_equal() + theme_map() +
+theme(plot.background = element_rect(fill = "black", colour = "black"),
+title = element_text(hjust = 1, colour = "white", size = 8),
+legend.position = "none") +
+  ggtitle("St. Louis Metro's public transport system")
+
+p2
+```
+
+Difference in the routes?
+
+## Faceted map
+```{r mapFacetedByRoute}
+miniMetros <- ggplot() + geom_path(data = shapes_metro.dt,
+            aes(shape_pt_lon, shape_pt_lat, group = shape_id, color = factor(shape_id)),
+            size = 2, alpha = .7) +
+  scale_color_manual(values = shapes_colors_metro$route_color) +
+  geom_point(data = stops_metro,
+             aes(stop_lon, stop_lat), shape = 21, colour = "white", alpha = .5) +
+coord_equal() + theme_map() + facet_wrap(~shape_id,ncol=6) +
+theme(plot.background = element_rect(fill = "black", colour = "black"),
+title = element_text(hjust = 1, colour = "white", size = 8),
+legend.position = "none") +
+  ggtitle("The shapes of St. Louis Metro's public transport system")
+
+miniMetros
+
+```
+
+## Map with bus stops
+```{r mapWithBusStops_v1}
+p3 <- p2 +geom_point(data = stops_notmetro, aes(stop_lon, stop_lat), 
+                     shape = 21, colour = "green", alpha = .2) 
+p3
+```
+
+Impressive, but the Metrolink is lost under the bus stops.  Reorder code to put metro layer back on top.
+
+```{r mapWithBusStops_v2}
+p4<- p3 +   geom_path(data = shapes_metro,
+                      aes(shape_pt_lon, shape_pt_lat, group = shape_id, 
+                          color = factor(shape_id)),
+                      size = 2, alpha = .8) +
+    geom_point(data = stops_metro,
+             aes(stop_lon, stop_lat),
+             shape = 21, colour = "white", alpha = .8, size = 3)
+p4
+
+
+# Just Metro route
+p5 <- ggplot() +
+  geom_path(data = shapes_metro,
+            aes(shape_pt_lon, shape_pt_lat, group = shape_id, colour = factor(shape_id)),
+            size = 2, alpha = .8) +
+  scale_color_manual(values = shapes_colors_metro$route_color) +
+  geom_point(data = stops_metro,
+             aes(stop_lon, stop_lat),
+             shape = 21, colour = "white", alpha = .8, size = 3) +
+  coord_equal() +
+  theme_map() +
+  theme(plot.background = element_rect(fill = "black", color = "black"),
+        title = element_text(hjust = 1, color = "white", size = 8),
+        legend.position = "none") 
+
+p5 + ggtitle("St. Louis METRO")
+
+```
+## Insert basemap behind Metro routes
+
+Here we reach for Leaflet, a javascript-based library that allows for interactive maps.  You can read about their R package at <https://rstudio.github.io/leaflet/> or peruse the full javascript library documentation at <http://leafletjs.com>.
+
+```{r leaflet_hereWeR}
+library(leaflet)
+m <- leaflet() %>%
+addTiles() %>%  # Add default OpenStreetMap map tiles
+addMarkers(lng=-90.2489464, lat=38.6362105, popup="STL R User's Group Meetup at CIC@CET")
+m  # Print the map
+
+```
+
+```{r connectMetroDots}
+just91322<-shapes_metro[which(shapes_metro$shape_id==91322), c("shape_pt_lon", "shape_pt_lat")]
+leaflet(as.matrix(just91322), options = leafletOptions(minZoom = 9, maxZoom = 18)) %>% addTiles() %>%
+  addPolylines(color = "red", weight = 4, smoothFactor = 0.5,
+    opacity = 1.0, highlightOptions = highlightOptions(color = "pink", weight = 4,
+      bringToFront = TRUE))
+
+just91318<-shapes_metro[which(shapes_metro$shape_id==91318), c("shape_pt_lon", "shape_pt_lat")]
+allMetrolink <-rbind(just91322, c(NA, NA), just91318)
+
+leaflet(as.matrix(allMetrolink), options = leafletOptions(minZoom = 9, maxZoom = 18)) %>%
+  addTiles() %>% addPolylines(color = c("red", "blue"), weight = 4, smoothFactor = 0.5,
+    opacity = 1.0, highlightOptions = highlightOptions(color = "yellow", weight = 4,
+      bringToFront = TRUE)) 
+
+
+```
+
+## Use different tiles for change in basemap
+
+A list of choices of basemap styles, together with preview images is provided at <http://leaflet-extras.github.io/leaflet-providers/preview/index.html>.
+
+
+```{r changeBasemap}
+names(providers)
+
+leaflet(as.matrix(allMetrolink), 
+        options = leafletOptions(minZoom = 10, maxZoom = 18)) %>% 
+  addProviderTiles("CartoDB.DarkMatter") %>%
+  addPolylines(color = c("red", "blue"), weight = 4, 
+               smoothFactor = 0.5, opacity = 1.0, 
+               highlightOptions = highlightOptions(color = "yellow", 
+                                                   weight = 4,
+                                                   bringToFront = TRUE))  %>% 
+  addLegend(title = "St. Louis MetroLink Light Rail System", 
+            colors = c("red", "blue"), 
+            labels = c("MetroLink Red Line","MetroLink Blue Line"), opacity = 1)
+
+```
+
+# Mapping St. Louis County
+
+In this example, we show how to work with shapefile data within R.  We obtain a shapefile of municipal boundaries from <http://data.stlouisco.com/>.  (In particular, we are using this file: <>.)
+
+```{r stlco_input_shapefile}
+library("rgdal") #load R interface to the Geospatial Abstraction Library (GDAL)
+library("rgeos")
+
+### NOTE: ###
+## Shapefile path is sensitive to trailing slash - needed on Mac, not on PC
+
+# myShapefilePath<- "/Users/CTatWUSTL/Box Sync/CT_presentations/MeetupSpatialR/shapefiles/Municipal_Boundaries/" 
+myShapefilePath<- "C:/Users/cindytraub/Box Sync/CT_presentations/MeetupSpatialR/shapefiles/Municipal_Boundaries" 
+
+setwd(myShapefilePath)
+dir() # should see MunicipalBoundaries (5 files)
+
+stlco<-readOGR(dsn = myShapefilePath,layer = "Municipal_Boundaries") #read in shapefile
+### dsn is directory where data is stored 
+### layer specifies the file name
+### no need for file extension like .shp
+```
+
+## Examining what types of data are in the shapefile
+
+The traditional "shape of your data" commands give some inkling to what things look like.  One difference from working with simple data frames is the use of the "@" sign to access different *slots* in the SpatialPolygonsDataFrame.  The "@data" slot stores a data frame associated with attribute data.
+
+```{r explore_shapefile}
+summary(stlco)
+dim(stlco)
+summary(stlco@data)
+stlco@data$MUNI
+
+head(stlco@polygons[[1]]@Polygons[[1]]@coords)  ### look at first few coordinates of 1st polygon
+plot(stlco@polygons[[1]]@Polygons[[1]]@coords)  ### graph coords of 1st polygon
+
+head(stlco@data, n=10)   ### look at the first 10 rows of data
+mean(stlco@data$SQ_MILES)  ### compute the average area
+names(stlco@data)
+
+plot(stlco) ### plots the map of St. Louis County Municipal boundaries
+
+# Is this projected?
+stlco@proj4string
+proj4string(stlco)
+# If YES, you may wish to store the projection for later operations.
+stlcoCRS<-proj4string(stlco)
+```
+
+
+## A little exploratory data analysis
+```{r eda}
+# Named Municipalities
+stlco@data[!stlco@data$MUNI=="UNI",]
+mean(stlco@data[!stlco@data$MUNI=="UNI",]$SQ_MILES)
+summary(stlco@data[!stlco@data$MUNI=="UNI",]$SQ_MILES)
+table(stlco@data[!stlco@data$MUNI=="UNI",]$SQ_MILES)
+stlco@data[!stlco@data$MUNI=="UNI"&stlco@data$SQ_MILES>=50,]
+mean(stlco@data[!stlco@data$MUNI=="UNI"&stlco@data$SQ_MILES<50,]$SQ_MILES)
+#Unincorporated
+stlco@data[stlco@data$MUNI=="UNI",]
+mean(stlco@data[stlco@data$MUNI=="UNI",]$SQ_MILES)
+summary(stlco@data[stlco@data$MUNI=="UNI",]$SQ_MILES)
+stlco@data[stlco@data$MUNI=="UNI"&stlco@data$SQ_MILES>=50,]
+summary(stlco@data[stlco@data$MUNI=="UNI"&stlco@data$SQ_MILES<50,]$SQ_MILES)
+
+# Explore a specific Municipality
+unique(stlco@data$MUNICIPALI)
+stlco[stlco@data$MUNICIPALI=="FERGUSON",]
+plot(stlco)
+plot(stlco[stlco@data$MUNICIPALI=="FERGUSON",], col="green", add = TRUE)
+```
+
+## Compute centroid of municipality
+
+The centroid or center of mass is one way to represent the "middle" of a given polygon.
+
+```{r ferg_centroid}
+fergcent<-gCentroid(stlco[stlco@data$MUNICIPALI=="FERGUSON",])
+fergcent
+
+plot(stlco)
+plot(stlco[stlco@data$MUNICIPALI=="FERGUSON",], col="green", add = TRUE)
+plot(fergcent,add = T,col="red")
+```
+
+
+## Compute a buffer
+
+A buffer is a region that extends a spatial object outward by a given distance.  A buffer around a point is a circle centered at that point.  A buffer of a street centerline is a strip of land that could include the shoulder, the median, and sidewalk running parallel to the road.  A buffer of a state could include all regions within 10 miles of that state's border.
+
+We note here that the data from St. Louis County was delivered in *geographic coordinates*, not projected coordinates.  This means that we have latitude and longitude data that is inherently 3D.  We will need to project this in order to compute a buffer.  We will first try to only project the centroid, compute the buffer relative to it, and continue from there.
+
+
+```{r buffer}
+ferg_cent_MOstplE<-spTransform(fergcent, CRS("+proj=tmerc +lat_0=35.83333333333334 +lon_0=-90.5 +k=0.999933333 +x_0=250000 +y_0=0 +ellps=GRS80 +units=m +no_defs"))
+
+
+ferg_buffer <- gBuffer(spgeom = ferg_cent_MOstplE, width = 4828) # 3 mi ~ 4828 m
+ferg_buffer
+ferg_buffer_geog_coords<- spTransform(ferg_buffer, CRSobj = stlcoCRS)
+plot(stlco)
+plot(stlco[stlco@data$MUNICIPALI=="FERGUSON",], col="green", add = TRUE)
+plot(fergcent,add = T,col="red")
+plot(ferg_buffer_geog_coords, add = T, border="blue")
+```
+
+### Subsetting by a buffer
+
+Computing a buffer allows you to easily subset the spatial objects within that buffer.  (But you need the CRS to be the same.)
+
+```{r use_buffer}
+ferg_3mi <- stlco[ferg_buffer_geog_coords,] 
+plot(stlco)
+plot(ferg_3mi, col = "lightblue", add = T)
+plot(ferg_buffer_geog_coords, add = T, border="blue", lwd = 3)
+plot(stlco[stlco@data$MUNICIPALI=="FERGUSON",], col="green", add = TRUE)
+plot(fergcent,add = T,col="red")
+```
+
+## Add in basemap with Leaflet
+
+Now that St. Louis County Data is natively in geographic coordinates (lat/lon pairs), we can easily display it with Leaflet.
+
+```{r leaflet_stlco}
+leaflet(stlco) %>% addTiles() %>% addPolygons() 
+
+```
+
+# Other resources and data sources
+
+## CRAN Task View *Spatial*
+
+A description of many useful packages is available in the Spatial Task View on CRAN: 
+<https://CRAN.R-project.org/view=Spatial>.
+
+
+## Robin Lovelace et. al. - tutorial on visualizing spatial data in R
+
+PDF available at: <http://spatial.ly/wp-content/uploads/2013/12/intro-spatial-rl-3.pdf>.
+
+## City of St. Louis data
+
+Shapefiles from the city of St. Louis may be downloaded here: <http://data.stlouis-mo.gov/downloads.cfm>.
+
+
+## Mapping National Parks
+
+You can obtain a shapefile of National Park Boundaries from <https://irma.nps.gov/DataStore/Reference/Profile/2224545?lnv=True>.
+
