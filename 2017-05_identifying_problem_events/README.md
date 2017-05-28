@@ -1,6 +1,4 @@
-By: Ryan Metcalf
-Ryan Metcalf
-Daugherty Business Solutions
+By: Ryan Metcalf, Daugherty Business Solutions
 
 Ryan will share his experience of performing analysis to find event sequences in data, and then creating an application to allow business users to explore the same data.
 
