@@ -1,0 +1,325 @@
+---
+title: "Analyzing Big Data with Microsoft R "
+output: html_document
+---
+### Introduction 
+2016 Taxi data from NY.
+http://www.nyc.gov/html/tlc/html/about/trip_record_data.shtml
+
+
+### Data Analysis; Read, Explore, Transform and Model the data
+
+### Reading Data
+#### Read a portion of data into Data Frame that will fit into memory
+10% of one month (January)
+
+```{r}
+rxSetComputeContext("local")
+rxGetComputeContext()
+
+#input_csv <- './Data/yellow_tripsample_2016-01.csv'
+#colClasses = col_classes
+input_csv <- './Data/nyc_sample.csv'
+nyc_sample_df <- read.csv(input_csv, header = T, stringsAsFactors = F)
+names(nyc_sample_df)[1] <- "VendorID"
+#nyc_sample_df <- read.csv(input_csv, nrows = 1000, header = TRUE, sep = ",", quote = "\"", stringsAsFactors = FALSE)
+nyc_sample_df$VendorID <- as.factor(nyc_sample_df$VendorID)
+nyc_sample_df$RatecodeID <- as.factor(nyc_sample_df$RatecodeID)
+nyc_sample_df$store_and_fwd_flag <- as.factor(nyc_sample_df$store_and_fwd_flag)
+dim(nyc_sample_df)
+head(nyc_sample_df)
+str(nyc_sample_df)
+
+```
+
+#### Read data into local compute context from a XDF (External file Format file)
+
+This is ~70 million rows (2.9 Gig) with 20 columns representing six months worth of 2016 data (January through June). 
+It took 23 minutes to build the XDF (eXternal Data File) 
+
+```{r}
+
+rxOptions(reportProgress = 0)
+input_xdf <- './Data/nyc_full.xdf'
+nyc_full_xdf <- RxXdfData(input_xdf)
+rxGetInfo(nyc_full_xdf)
+
+system.time(
+  rxsumfull_xdf <- rxSummary( ~., nyc_full_xdf) # provide statistical summaries for fare amount
+)
+rxsumfull_xdf
+
+```
+Import a sample (3,467,953 rows) from a csv into a xdf 
+
+```{r}
+
+col_classes <- c('VendorID' = "factor",
+                 'tpep_pickup_datetime' = "character",
+                 'tpep_dropoff_datetime' = "character",
+                 'passenger_count' = "integer",
+                 'trip_distance' = "numeric",
+                 'pickup_longitude' = "numeric",
+                 'pickup_latitude' = "numeric",
+                 'RatecodeID' = "factor",
+                 'store_and_fwd_flag' = "factor",
+                 'dropoff_longitude' = "numeric",
+                 'dropoff_latitude' = "numeric",
+                 'payment_type' = "factor",
+                 'fare_amount' = "numeric",
+                 'extra' = "numeric",
+                 'mta_tax' = "numeric",
+                 'tip_amount' = "numeric",
+                 'tolls_amount' = "numeric",
+                 'improvement_surcharge' = "numeric",
+                 'total_amount' = "numeric",
+                 'u' = "numeric")
+
+
+nyc_sample_csv <- './Data/nyc_sample.csv'
+nyc_sample_xdf<-'./Data/nyc_sample.xdf'
+input_xdf <- './Data/nyc_sample'
+input_xdf <- './Data/yellow_tripdata_2016.xdf'
+rxImport(nyc_sample_csv, nyc_sample_xdf, rowSelection = (payment_type != 0), overwrite = T, colClasses = col_classes)
+system.time(
+  rxsumsamp_xdf <- rxSummary(~payment_type, nyc_sample_xdf) # provide statistical summaries for fare amount
+)
+rxsumsamp_xdf
+
+#Memory Sizes
+sprintf('Sample Dataframe Memory footprint = %.2f Meg', object.size(nyc_sample_df) / 1000000)
+sprintf('Full XDF File Memory footprint = %.2f bytes', object.size(nyc_full_xdf))
+sprintf('Sample XDF Memory footprint = %.2f bytes', object.size(nyc_sample_xdf))
+```
+
+#### Use a .csv with RevoScale R
+
+This is an example of using RX functions to read a regular csv file into a Revoscale format in memory.
+
+```{r}
+
+input_csv <- './Data/yellow_tripsample_2016-01.csv' # we can only use one month's data unless we join the CSVs
+nyc_csv <- RxTextData(input_csv, colClasses = col_classes) # point to CSV file and provide column info
+system.time(
+  rxsum_csv <- rxSummary( ~ payment_type, nyc_csv) # provide statistical summaries for fare amount
+)
+rxsum_csv
+
+```
+### Data Exploration
+#### str and head command all in one
+#### Accessing rx S4 objects
+
+```{r,echo=TRUE}
+
+nyc_xdfInfo <- rxGetVarInfo(nyc_sample_xdf)
+str(nyc_xdfInfo)
+names(nyc_xdfInfo$tip_amount)
+nyc_xdfInfo$tip_amount
+typeof(nyc_xdfInfo$tip_amount)
+length(nyc_xdfInfo$tip_amount)
+nyc_xdfInfo$tip_amount[[4]]
+nyc_xdfInfo$tip_amount[["high"]]
+
+```
+#### Some Graphs
+
+```{r, fig.width=8, fig.height=6}
+
+system.time(
+rxHistogram( ~ trip_distance, nyc_full_xdf, startVal = 0, endVal = 25, histType = "Percent", numBreaks = 20, reportProgress = 0)
+    )
+
+```
+
+```{r, fig.width=4, fig.height=6}
+
+system.time(
+rxHistogram( ~ trip_distance, nyc_full_xdf, startVal = 1000, endVal = 10000, histType = "Percent", numBreaks = 20, reportProgress = 0
+    , rowSelection = (trip_distance > 1000 & trip_distance < 10000))
+    )
+
+```
+
+```{r, fig.width=4, fig.height=6}
+
+system.time(
+rxHistogram( ~ trip_distance, nyc_full_xdf, startVal = 1000, endVal = 10000, histType = "Counts", numBreaks = 20, reportProgress = 0
+    , rowSelection = (trip_distance > 1000 & trip_distance < 10000))
+    )
+
+```
+
+```{r, fig.width=4, fig.height=6}
+
+system.time(
+rxHistogram( ~ fare_amount, nyc_full_xdf, startVal = 1000, endVal = 10000, histType = "Counts", numBreaks = 20, reportProgress = 0
+    , rowSelection = (fare_amount > 1000 & fare_amount < 10000))
+    )
+
+```
+
+### Data Clean-up
+
+```{r}
+
+system.time(
+rxDataStep(inData = nyc_full_xdf, outFile = './Data/nyc_clean.xdf'
+    , rowSelection = (trip_distance > 0 & trip_distance < 1000)
+    & (fare_amount > 0 & fare_amount < 1000)
+    & (tip_amount >= 0)
+    & (tolls_amount >= 0)
+    & (total_amount >= 0 & total_amount < 1000)
+    & (mta_tax >= 0)
+    & (extra >= 0)
+    , overwrite = T)
+    )
+nyc_clean_xdf <- RxXdfData('./Data/nyc_clean.xdf')
+system.time(
+clean<-rxSummary( ~ ., data = nyc_clean_xdf)
+)
+clean 
+
+```
+
+### Feature Engineering
+#### Performing simple and complex transformations
+
+```{r}
+payment_labels <- c('Credit card', 'Cash')
+system.time(
+rxDataStep(nyc_clean_xdf,nyc_clean_xdf,
+           transforms = list(Ratecode_type_desc = factor(RatecodeID, levels = 1:6, labels = c('Standard rate', 'JFK', 'Newark', 'Nassau or Westchester', 'Negotiated fare', 'Group ride'))
+           , payment_type_desc = factor(payment_type, levels = 1:2, labels = payment_labels)),
+           transformObjects = list(payment_labels = payment_labels),
+           overwrite = TRUE)
+	)
+system.time(
+ratecode<- rxSummary( ~ Ratecode_type_desc, nyc_clean_xdf)
+)
+ratecode
+
+system.time(
+payment<-rxSummary( ~ payment_type_desc, nyc_clean_xdf)
+)
+payment 
+```
+
+### Change Context
+
+
+```{r, echo=TRUE}
+
+
+rxSetComputeContext("local")
+rxGetComputeContext()
+
+sqlConnString <- "Driver=SQL Server;Server=localhost;Database=taxi;trusted_connection=true;Integrated Security=SSPI;"
+
+sqlRowsPerRead <- 1000000
+
+sqlTable <- 'yellow_manhattan'
+
+ccColInfo <- list(
+  tpep_pickup_datetime = list(type = "character"),
+  tpep_dropoff_datetime = list(type = "character"),
+  passenger_count = list(type = "integer"),
+  trip_distance = list(type = "numeric"),
+  pickup_longitude = list(type = "numeric"),
+  pickup_latitude = list(type = "numeric"),
+  dropoff_longitude = list(type = "numeric"),
+  dropoff_latitude = list(type = "numeric"),
+  RateCodeID = list(type = "factor", levels = as.character(1:6), newLevels = c("standard", "JFK", "Newark", "Nassau or Westchester", "negotiated", "group ride")),
+  store_and_fwd_flag = list(type = "factor", levels = c("Y", "N")),
+  payment_type = list(type = "factor", levels = as.character(1:2), newLevels = c("card", "cash")),
+  fare_amount = list(type = "numeric"),
+  tip_amount = list(type = "numeric"),
+  total_amount = list(type = "numeric")
+)
+
+weekday_labels <- c('Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat')
+hour_labels <- c('1AM-5AM', '5AM-9AM', '9AM-12PM', '12PM-4PM', '4PM-6PM', '6PM-10PM', '10PM-1AM')
+
+ccColInfo$pickup_dow <- list(type = "factor", levels = weekday_labels)
+ccColInfo$pickup_hour <- list(type = "factor", levels = hour_labels)
+ccColInfo$dropoff_dow <- list(type = "factor", levels = weekday_labels)
+ccColInfo$dropoff_hour <- list(type = "factor", levels = hour_labels)
+
+nyc_shapefile <- readShapePoly('./Data/ZillowNeighborhoods-NY/ZillowNeighborhoods-NY.shp')
+mht_shapefile <- subset(nyc_shapefile, str_detect(CITY, 'New York City-Manhattan'))
+manhattan_nhoods <- as.character(mht_shapefile@data$NAME)
+
+ccColInfo$pickup_nhood <- list(type = "factor", levels = manhattan_nhoods)
+ccColInfo$dropoff_nhood <- list(type = "factor", levels = manhattan_nhoods)
+
+#RxXDFData
+#RxSqlServerData
+
+nyc_sql <- RxSqlServerData(connectionString = sqlConnString, table = sqlTable, rowsPerRead = sqlRowsPerRead, colInfo = ccColInfo)
+
+rxGetInfo(nyc_sql, getVarInfo = TRUE, numRows = 3) # show column types and the first 10 rows
+
+system.time(
+  rxsum_sql <- rxSummary( ~ ., nyc_sql) # provide statistical summaries for all the columns
+)
+rxsum_sql
+
+rxGetComputeContext()
+
+sqlWait <- TRUE
+sqlConsoleOutput <- FALSE
+sqlShareDir <- getwd()
+
+sqlComputeTrace <- RxInSqlServer(
+    connectionString = sqlConnString,
+    shareDir = sqlShareDir,
+    , wait = sqlWait
+    , consoleOutput = sqlConsoleOutput
+    #,traceEnabled = TRUE
+    #,traceLevel = 7
+    )
+
+rxSetComputeContext(sqlComputeTrace)
+#rxSetComputeContext("local")
+
+rxGetComputeContext()
+
+nyc_sql <- RxSqlServerData(connectionString = sqlConnString, table = sqlTable, rowsPerRead = sqlRowsPerRead, colInfo = ccColInfo)
+
+rxGetInfo(nyc_sql, getVarInfo = TRUE, numRows = 3) # show column types and the first 10 rows
+
+system.time(
+  rxsum_sql <- rxSummary( ~ ., nyc_sql) # provide statistical summaries for all the columns
+)
+rxsum_sql
+
+```
+
+### Model
+
+```{r}
+
+rxGetComputeContext()
+
+sql_trn <- 'SELECT * FROM [dbo].[yellow_manhattan] WHERE u < .035' #65%
+
+nyc_sql_trn <- RxSqlServerData(connectionString = sqlConnString, sqlQuery = sql_trn
+    , rowsPerRead = sqlRowsPerRead, colInfo = ccColInfo)
+
+sql_tst <- 'SELECT * FROM [dbo].[yellow_manhattan] WHERE u >=.035' #35%
+nyc_sql_tst <- RxSqlServerData(connectionString = sqlConnString, sqlQuery = sql_tst
+    , rowsPerRead = sqlRowsPerRead, colInfo = ccColInfo)
+
+rxGetInfo(nyc_sql_tst, getVarInfo = TRUE, numRows = 3) # show column types and the first 10 rows
+
+system.time(
+  rxsum_sql <- rxSummary( ~ ., nyc_sql) # provide statistical summaries for all the columns
+)
+rxsum_sql
+
+system.time(linmod <- rxLinMod(tip_percent ~ pickup_nhood:dropoff_nhood + pickup_dow:pickup_hour,
+                               data = nyc_sql_trn, reportProgress = 0)
+)
+
+```
+### Questions
