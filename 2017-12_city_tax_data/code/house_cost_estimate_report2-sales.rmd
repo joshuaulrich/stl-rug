@@ -1,0 +1,359 @@
+---
+title: "Home Sales Nearby"
+author: "W Krekeler"
+date: "December 12, 2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+   knitr::opts_chunk$set(echo = FALSE)
+   library(knitr)
+   library(ggplot2)
+   library(dplyr)
+   library(tidyr)
+   library(RDSTK) # datascienctoolkit
+   require('RDSTK')  # this works better in linux, why?
+   library(RCurl)
+   library(rjson)
+   library(gridExtra)   # grid.arrange
+   library(data.table)
+   library(dtplyr)
+   # distances:
+      library(geotools) # distKm()   
+      library(zipcode)  # zipcode database locations
+   library(ggmap)
+   # make sure to vagrant up on the dstk 0.51 box before the next line!
+   options("RDSTK_api_base"="http://localhost:8080")
+   
+   
+   fileName <- list()
+   fileName$path <- 'C:/data/documents/docs/projects'
+   
+   # attempt to switch to defined paths for demo; remove hardcoded references
+   houseLookup <- list()
+   houseLookup$zipcode <- 63109
+   houseLookup$addressNum <- 5403
+   houseLookup$addressStreet <- 'Lisette'
+   houseLookup$purchaseYear <- 2008   # not real for given address, date to scale to though
+   houseLookup$purchaseMonth <- 12  # 1-12
+   houseLookup$purchaseDecimal <- as.integer(houseLookup$purchaseYear) + (as.integer(houseLookup$purchaseMonth)-1)/12 
+   houseLookup$purchasePrice <- 150000
+   houseLookup$cityValueEst <- 190000
+```
+
+```{r loadData}
+   
+   load( file.path(fileName$path, 'data_housing/st_louis_city_data/st_louis_housing_data_2017_ref.20170813.rdata') )
+   fileName.CityDataPath <- file.path( fileName$path, 'data_housing/st_louis_city_data/20170813' )
+   
+```
+
+# `r sprintf( 'Zillow $/Sq Foot %d', houseLookup$zipcode )`
+```{r plotZillowSQFootforZip}
+   
+   ggplot() + 
+      geom_line(data=(zzsfh.long %>% filter(ZipCode == houseLookup$zipcode) ), 
+                aes(x=Date, y=Price_SqFt), color='grey') +
+      geom_point( data=(zzsfh.long %>% filter(ZipCode == houseLookup$zipcode) ), 
+                aes(x=Date, y=Price_SqFt) ) + 
+      theme(axis.text.x = element_text(angle = 90, hjust = 1))
+   
+   g1 <- ggplot() + 
+      geom_line(data=(zzsfh.long %>% filter(ZipCode == houseLookup$zipcode) ), 
+                aes(x=Date, y=Price_SqFt), color='grey') +
+      geom_point( data=(zzsfh.long %>% filter(ZipCode == houseLookup$zipcode) ), 
+                aes(x=Date, y=Price_SqFt) ) +
+      geom_point( data=(zzsfh.long %>% filter(ZipCode == houseLookup$zipcode) %>% 
+                           filter(Date == houseLookup$purchaseDecimal )), 
+                  aes(x=Date, y=Price_SqFt), colour='red' ) +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+      xlab('Date') + ylab(paste(houseLookup$zipcode, '$/ft^2')) + 
+      ggtitle(paste(houseLookup$zipcode, 'price/ft^2')) +
+      geom_text( aes(x=2000,y=115, label='red = purchase date $/ft^2', size=14), color='red') +
+      theme(legend.position="none")
+   
+   g2 <- ggplot() + 
+      geom_line(data=(zzsfh.houseValue ), aes(x=Date, y=houseValue), color='grey') +
+      geom_point( data=(zzsfh.houseValue ), aes(x=Date, y=houseValue) ) +
+      geom_point( data=(zzsfh.houseValue %>% 
+                           filter(Date == houseLookup$purchaseDecimal )), 
+                  aes(x=Date, y=houseValue), colour='red' ) +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+      xlab('Date') + ylab(paste0('house value relative to\n',houseLookup$zipcode,' $/ft^2 scalar')) + 
+      ggtitle(paste('Estimated House Value Derived by',houseLookup$zipcode, 'ZipCode House Sales $/ft^2') ) +
+      geom_text( aes(x=2010,y=houseLookup$purchasePrice*.9, 
+                     label='red = purchase date and price', size=14), color='red') +
+      theme(legend.position="none")
+   
+   grid.arrange(g1,g2,nrow=2)
+   
+```
+
+# Per Zillow $/Sq Foot Value Estimate
+```{r mergeZillowAndCityDataForProperty}
+   
+   addressIndex <- intersect( which(cityData.Addr$LowAddrNum == houseLookup$addressNum), 
+                              grep( tolower(houseLookup$addressStreet), tolower(cityData.Addr$StName) ) )
+   print( cityData.Addr$Addr[addressIndex] )
+   block <- cityData.Addr$CityBlock[addressIndex]
+   parcel <- cityData.Addr$Parcel[addressIndex]
+   print( paste( 'block:', block, 'parcel:', parcel ) )
+   
+   # why does code below now give error: 
+   #     Error: ScalesList was built with an incompatible version of ggproto.
+   #     Please reinstall the package that provides this extension.
+   g2a <- g2 + geom_point(data=cityData.House, aes(x=BillYear,y=appraised_value), color='blue' ) + 
+      geom_text( aes(x=2008.2,y=90000, label='blue = tax-appraised total value', size=14), color='blue') + 
+      theme(legend.position="none")
+   
+   grid.arrange( g1, g2a, nrow=2)
+   
+```
+
+# why does the city not know much about 50k properties?
+* no prcl_BldgRes.txt entry
+* The properties without residential information seem to be those that have been abandoned or converted to commercial
+
+
+# readd this code after computing zipcode estimate again
+```{r cityDataAddressesCompute}
+   # readd this code after computing zipcode estimate again
+
+   #
+```
+
+```{r cityDataAddressesMap}   
+   # why doesn't the city know much about 50000 properties?
+   emptyResInfoIndex <- which(is.na(cityData.AddrResInfo$BldgNum))
+   View( cityData.AddrResInfo[emptyResInfoIndex, ] )
+   
+
+   # location =  left/bottom/right/top bound
+   # get range from ref: https://www.openstreetmap.org/export#map=12/38.6261/-90.2453
+   #        https://www.openstreetmap.org/api/0.6/map?bbox=-90.3749,38.5135,-90.1157,38.7386.
+   
+   stMap <- get_map(location=c(left=-90.3749, bottom=38.5135,right=-90.1157,top=38.7386),
+    zoom=12, scale=2, maptype="roadmap", source="google", color="bw")
+      # zoom 12 too small (marginally), zoom 11 too big thus city is small on the map
+      # ?get_openstreetmap
+        #  get_openstreetmap(bbox = c(left = -90.3749, bottom = 38.5135, right =
+        # -90.1157, top = 38.7386), scale = 606250, format = c("png", "jpeg",
+        # "svg", "pdf", "ps"), messaging = FALSE, urlonly = FALSE,
+        # filename = "ggmapTemp", color = c("color", "bw"), ...)
+        # ggmap( stMap ) + ggtitle("Saint Louis Road Map BW Using Name Fetch")
+        # 
+     # use different package: OpenStreetMap per ref: https://help.openstreetmap.org/questions/41673/get-open-street-map-in-r
+     #
+     # library(OpenStreetMap) # this failed
+     # install wants gdal-config which it refuses to recognize is already built and isntalled
+     #   debug ref: https://stackoverflow.com/questions/12141422/error-gdal-config-not-found
+     
+      # above reports center url
+      # as=38.62605,-90.2453&zoom=12&size=640x640&scale=1&maptype=roadmap&language=en-EN&sensor=false
+ ggmap( stMap ) + ggtitle("Saint Louis Road Map BW Using Name Fetch")
+
+ # small points ref: https://stackoverflow.com/questions/34638902/point-size-in-ggplot-2-0-0   
+ print('The properties without residential information seem to be those that have been abandoned or converted to commercial')
+ ggmap( stMap ) +
+    geom_point( data=cityData.AddrResInfo, aes(x=longitude,y=latitude), size=0.2, stroke=0, shape=16, color='green', alpha=0.2) +
+    geom_point( data=cityData.AddrResInfo[emptyResInfoIndex, ], aes(x=longitude,y=latitude), size=0.2, stroke=0, shape=16, color='red', alpha=0.2) +
+    ggtitle('Saint Louis City Properties Without residential information (Red)')
+ 
+```
+
+# ZipCode Estimate Map
+* faster lookup by distance than via Post-Office API
+* WARNING: need to regenerate the zipcode estimates, not saved
+```{r zipcodemap}
+
+   if(!exists('stMap')) {
+      stMap <- get_map(location=c(left=-90.3749, bottom=38.5135,right=-90.1157,top=38.7386),
+    zoom=12, scale=2, maptype="roadmap", source="google", color="bw")
+   }
+   # ggmap( stMap ) +
+   #    geom_point( data=cityData.AddrResInfo, aes(x=longitude,y=latitude, color=factor(zipcodeEst)), 
+   #              size=1, stroke=0,  shape=16, alpha=0.2) +
+   #    ggtitle('Saint Louis City Properties By Zipcode Estimate')
+   # 
+```
+
+
+# Similar Property Analysis
+```{r findSimilarProperties}
+
+   addressIndex <- intersect( which(cityData.AddrResInfo$LowAddrNum == houseLookup$addressNum),
+                              grep( tolower(houseLookup$addressStreet), tolower(cityData.AddrResInfo$StName) ) )
+   print( cityData.AddrResInfo$Addr[addressIndex] )
+   block <- cityData.AddrResInfo$CityBlock[addressIndex]
+   parcel <- cityData.AddrResInfo$Parcel[addressIndex]
+   latitude <- cityData.AddrResInfo$latitude[addressIndex]
+   longitude <- cityData.AddrResInfo$longitude[addressIndex]
+
+   # distKm(lat0,lon0,lat1,lon1)
+   distancesToHouse <- distKm(latitude, longitude, cityData.AddrResInfo$latitude, cityData.AddrResInfo$longitude)
+   
+   # -- top 20 nearest properties
+   #cityData.AddrResInfo$street_address[which(rank( distancesToHouse, na.last = TRUE, ties.method = "min" ) < 20)]
+   #distancesToHouse[which(rank( distancesToHouse, na.last = TRUE, ties.method = "min" ) < 20)]
+   
+   # -- properties within a certain distance
+   nMiles <- .25
+   nKm <- nMiles * 1 * 5280 * 12 * 2.54 / 100 / 1000  # (ft/mile) * (12 in /ft) * (2.54 cm/ in) * (1 m / 100 cm) * 1 km / 1000 m
+   
+   housesWithinMileIndex <- setdiff( which( distancesToHouse < nKm ),addressIndex )  # do NOT include matching house
+   # View( cityData.AddrResInfo[housesWithinMileIndex, ])      
+   # exclude those without extra data
+   housesWithinMileIndex <- housesWithinMileIndex[ 
+      which( !is.na(cityData.AddrResInfo$BldgNum[ housesWithinMileIndex ]) )]
+   
+   # match properties on the following characteristics
+#    
+# [11] "AddrType"           "BadAddrType"        "RecNum"             "RecNumLRMS"     
+#      "BldgNum" ??
+#      "ResOccType"         "BsmtType"           "BsmtFinishType"    
+# [41] "BsmtAreaFinished"   "BsmtAreaPartial"    
+#   "ResExtWallType" ??
+# "LivingAreaTotal"  QQQ: multiple  
+#    "RoomArea"  ??
+# "ResStoriesCode"
+#      "FullBaths"          "HalfBaths"         
+# [51] "AirCondCentral"     
+#   "AirCondWindow"??
+#   "CentralHeating"     
+#  "Attic"  -- don't think our house has an attic
+#   "Garage1"  "Garage2"            "Carport1"           "Carport2"   
+#   "YearBuilt"         -- use as trigger for brick or not
+# "ResModelCode"      # PrclCode_CdResModel.txt
+# "ResModelAdjCode"   # PrclCode_CdResModelAdj.txt
+# "EffectiveYearBuilt" "FunctionalDep"      "LocationalDep"     
+# > 
+   
+   similarHouses <- cityData.AddrResInfo[ housesWithinMileIndex, ] %>%
+      #filter( AddrType == cityData.AddrResInfo$AddrType[ addressIndex ]) %>%
+      filter( !(AddrType %in% c("B","D","G","O", "P","Q","R","X") ) ) %>%   # just drop invalid address types, exact match not needed see PrclCode_CdAddrType.txt
+      filter( BadAddrType == "" ) %>%  # drop any bad address flag type
+      filter( RecNum == cityData.AddrResInfo$RecNum[ addressIndex ]) %>%
+      filter( RecNumLRMS == cityData.AddrResInfo$RecNumLRMS[ addressIndex ]) %>%
+      filter( ResOccType == cityData.AddrResInfo$ResOccType[ addressIndex ]) %>%  # PrclCode_CdResOcc.txt, number families
+      filter( BsmtType == cityData.AddrResInfo$BsmtType[ addressIndex ]) %>%      # PrclCode_CdBsmtType.txt
+      filter( BsmtFinishType == cityData.AddrResInfo$BsmtFinishType[ addressIndex ]) %>%  # PrclCode_CdBsmtFinish.txt
+      #filter( BsmtAreaPartial == cityData.AddrResInfo$BsmtAreaPartial[ addressIndex ]) %>%
+      filter( ResExtWallType == cityData.AddrResInfo$ResExtWallType[ addressIndex ]) %>%  # PrclCode_CdResExtWall.txt
+      filter( ResStoriesCode == cityData.AddrResInfo$ResStoriesCode[ addressIndex ]) %>%  # PrclCode_CdResStories.txt, what if include c(1,2,3)?
+      filter( FullBaths == cityData.AddrResInfo$FullBaths[ addressIndex ]) %>%    # 
+      filter( AirCondCentral == cityData.AddrResInfo$AirCondCentral[ addressIndex ]) %>%
+      filter( CentralHeating == cityData.AddrResInfo$CentralHeating[ addressIndex ])
+
+   # next: link to sales data to understand prices for area better
+
+```
+
+## List Similar Properties With Sales History
+```{r importSalesData}
+   fileName.CityDataSaleHistory1 <- file.path( fileName.CityDataPath, 'prclsale', 'prclsale_HistPrclSale.txt' )
+   fileName.CityDataSaleHistory2 <- file.path(fileName.CityDataPath, 'prclsale', 'prclsale_PrclSale.txt')
+   
+   cityData.Sales1 <- fread(fileName.CityDataSaleHistory1)
+   cityData.Sales2 <- fread(fileName.CityDataSaleHistory2)
+   
+   # DT[,.(V2,V3)]
+   # grab only non-zero sales price and row bind two histories
+   #setnames(cityData.Sales1, "RecDailyDate", "SaleDate") # required or rbind will fail on the different names
+   cityData.Sales <- rbind( 
+      cityData.Sales1[ cityData.Sales1$SalePrice > 0 ,
+                       .(CityBlock, Parcel, OwnerCode, SaleNum, SaleType, SalePrice, SaleDate=RecDailyDate)], 
+      cityData.Sales2[ cityData.Sales2$SalePrice > 0 ,
+                       .(CityBlock, Parcel, OwnerCode, SaleNum, SaleType, SalePrice, SaleDate)] )
+   rm(list=c('cityData.Sales1','cityData.Sales2'))
+
+
+   # subset to the sales that match the similar houses
+   similarHouses.Sales <- right_join( cityData.Sales[ SalePrice > 0, ], 
+                             data.table(similarHouses %>% 
+                                        select(one_of(c("CityBlock","Parcel",
+                                                        "street_address", "latitude", "longitude",
+                                                        "LivingAreaTotal")))), by=c("CityBlock","Parcel"))
+   # ref: https://stackoverflow.com/questions/14362614/how-should-i-drop-blocks-of-nas-from-an-r-data-table
+   # drop NA values and convert Data to posix
+   similarHouses.Sales <- similarHouses.Sales[,SaleDate:= as.POSIXct(SaleDate, format="%m/%d/%y %H:%M:%S") ]
+   similarHouses.Sales <- similarHouses.Sales[complete.cases(similarHouses.Sales), ]
+   similarHouses.Sales <- similarHouses.Sales[, PricePerSqFt := SalePrice/LivingAreaTotal ]
+   
+   #View(similarHouses.Sales)
+   kable(similarHouses.Sales %>% arrange(SaleDate) %>% select(-OwnerCode) %>% select(-latitude) %>% select(-longitude) %>% select(CityBlock,Parcel,street_address, SaleDate,PricePerSqFt,everything()) )
+   
+```
+
+
+```{r }
+   ggplot() + geom_point( data=similarHouses.Sales, aes(x=SaleDate, y=SalePrice, color=LivingAreaTotal))
+   
+   # plot similar house sales in area over zillow zipcode $/foot data
+   g1 <- ggplot() + 
+            geom_line(data=(zzsfh.long %>% filter(ZipCode == houseLookup$zipcode) %>% 
+                               mutate( Date=as.POSIXct(paste0(Year,Month,"01"), format='%Y%m%d') ) ), 
+                      aes(x=Date, y=Price_SqFt), colour='red') +
+            geom_smooth( data=similarHouses.Sales, aes(x=SaleDate, y=PricePerSqFt), method='loess') +
+            geom_point( data=similarHouses.Sales, aes(x=SaleDate, y=PricePerSqFt)) +
+            ylab('$/ft^2 Nearby') +
+            theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+            ggtitle('House Sales $/ft^2 vs Zillow Zip-Code $/ft^2(red), Data Fit (blue)')
+   
+   if ( 0 ) {
+      g1build <- ggplot_build(g1)
+   
+      g2 <- ggplot() +
+         geom_line(data=(zzsfh.long %>% filter(ZipCode == houseLookup$zipcode) %>% filter(Year > 2005) %>%
+                                  mutate( Date=as.POSIXct(paste0(Year,Month,"01"), format='%Y%m%d') ) ), 
+                         aes(x=Date, y=Price_SqFt), colour='red') +
+         geom_line( data=g1build$data[[2]], aes(x=x,y=y), 
+                    colour=g1build$data[[2]]$colour[1], 
+                    size=g1build$data[[2]]$size[1],
+                    alpha=g1build$data[[2]]$alpha[1]
+                    ) +
+         geom_point( data=similarHouses.Sales[SaleDate > as.POSIXct( '2005', format="%Y" ), ], 
+                     aes(x=SaleDate, y=PricePerSqFt))
+      
+      as.POSIXct(paste0("1996","04","01"), tz=Sys.timezone(location = TRUE), format='%Y%m%d')
+   }
+   g2 <- g1
+   grid.arrange(g1,g2 + xlim(as.POSIXct( c('2005','2016'), format='%Y')) + ylim(c(0,200)),ncol=1)
+   
+   # map the nearby properties: zoom 16 good for quarter mile; zoom 15 likely good for 1/2 mile
+   stMapClose <- get_map(location=c(lon=longitude, lat=latitude),
+                      zoom=16, scale=2, maptype="roadmap", source="google", color="bw")
+   
+   ggmap( stMapClose ) +
+      geom_point( data=similarHouses.Sales, aes(x=longitude,y=latitude, color=SalePrice), 
+                size=2, stroke=0,  shape=16, alpha=0.2) +
+      ggtitle('Area Properties Map')
+   
+   ggmap( stMapClose ) +
+      geom_point( data=similarHouses.Sales[SaleDate > as.POSIXct( '2014', format="%Y" ),], 
+                  aes(x=longitude,y=latitude, color=SalePrice, size=PricePerSqFt) 
+                , stroke=0,  shape=16, alpha=0.4) +
+      ggtitle('Area Properties Map 2014-2016 Sales')
+   
+   # ref: dplyr reordering: http://www.exegetic.biz/blog/2015/05/r-recipe-reordering-columns-in-a-flexible-way/
+   kable(similarHouses.Sales[SaleDate > as.POSIXct( '2014', format="%Y" ),] %>% arrange(SaleDate) %>% select(-OwnerCode) %>% select(-latitude) %>% select(-longitude) %>% select(CityBlock,Parcel,street_address, SaleDate,PricePerSqFt,everything()))
+
+```
+
+# statistics
+* `r sprintf('City Assigned Valuation; statistical mean for homes in area: %.2f', houseLookup$cityValueEst / cityData.AddrResInfo$LivingAreaTotal[ addressIndex ] )`
+* recent home sales ....
+```{r}
+   cityAssignedValuation <- houseLookup$cityValueEst / cityData.AddrResInfo$LivingAreaTotal[ addressIndex ]
+   summary(similarHouses.Sales$PricePerSqFt[similarHouses.Sales$SaleDate > as.POSIXct( '2014', format="%Y" )] )
+```
+
+
+
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
