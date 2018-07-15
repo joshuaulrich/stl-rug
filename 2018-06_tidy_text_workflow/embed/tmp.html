@@ -1,0 +1,75 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+  <title>Slides</title>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, user-scalable=no">
+
+  <style>
+  iframe[seamless] {
+      background-color: transparent;
+      border: 0px none transparent;
+      padding: 0px;
+      overflow: hidden;
+  }
+  </style>
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+  <script>
+  $.getScript("https://raw.githubusercontent.com/sindresorhus/screenfull.js/gh-pages/dist/screenfull.min.js");
+  </script>
+
+  <!-- Latest compiled and minified CSS -->
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
+
+  <!-- Optional theme -->
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap-theme.min.css" integrity="sha384-fLW2N01lMqjakBkx3l/M9EahuwpSfeNvV63J5ezn3uZzapT0u7EYsXMjQV+0En5r" crossorigin="anonymous">
+
+  <!-- Latest compiled and minified JavaScript -->
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>
+
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css">
+
+</head>
+<body>
+    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Morbi nec elementum elit, at facilisis risus. Sed magna
+        elit, tincidunt quis nisl eget, viverra aliquet dui. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Mauris
+        auctor arcu ultricies pharetra vulputate. Vestibulum ornare volutpat quam at gravida. Integer pharetra auctor lacus
+        ut pulvinar. Integer nibh risus, facilisis ac suscipit ut, laoreet sed sem. Nulla semper sodales ipsum scelerisque
+        suscipit.</p>
+
+	<script type="text/javascript">
+	$(document).ready(function() {
+	  $('#fs-overview-link').click(function () {
+		  if (screenfull.enabled) {
+			  screenfull.request($('#fs-overview-target')[0]);
+		  }
+	  });
+	});
+	</script>
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <h2 class="panel-title">
+                R Basics (<a href="http://slides.lunean.com/r-presentation-template/rpres.pdf">PDF</a>) <a id="fs-overview-link" class="pull-right" href="#"><i class="fa fa-arrows-alt"></i></a>
+            </h2>
+        </div>
+        <div class="panel-body">
+            <div class="embed-responsive embed-responsive-4by3">
+                <iframe id="fs-overview-target" src="http://slides.lunean.com/r-presentation-template/rpres.html" allowfullscreen seamless>
+                    <p>Your browser does not support iframes.</p>
+                </iframe>
+                <!--<iframe src="http://www.w3schools.com">-->
+                    <!--<p>Your browser does not support iframes.</p>-->
+                <!--</iframe>-->
+            </div>
+        </div>
+    </div>
+
+    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Morbi nec elementum elit, at facilisis risus. Sed magna
+        elit, tincidunt quis nisl eget, viverra aliquet dui. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Mauris
+        auctor arcu ultricies pharetra vulputate. Vestibulum ornare volutpat quam at gravida. Integer pharetra auctor lacus
+        ut pulvinar. Integer nibh risus, facilisis ac suscipit ut, laoreet sed sem. Nulla semper sodales ipsum scelerisque
+        suscipit.</p>
+</body>
+</html>
