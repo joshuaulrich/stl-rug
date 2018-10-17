@@ -1,0 +1,31 @@
+Package: pipeline1
+Title: Example data pipeline in R
+Version: 0.1.0
+Authors@R: person("Ryan", "Price", email = "ryapric@gmail.com", role = c("aut", "cre"))
+Description:
+    This package serves as an example of how to design data pipelines
+    in R. The process employed need not simply be transformations on the
+    incoming data; you can do *whatever* you want, and load the results
+    *anywhere* (ex. write to a database, save a model output as a `.rds` and
+    upload to S3, etc.). This bare-bones example just demonstrates a read-write
+    DB example showing how to automate pipelines in R.
+Depends:
+    R (>= 3.4.4)
+Imports:
+    DBI,
+    dplyr,
+    loggit,
+    magrittr,
+    RPostgres,
+    RSQLite,
+    tidyr
+Suggests:
+    devtools,
+    knitr,
+    rmarkdown,
+    testthat
+License: file LICENSE
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 6.1.0
+Roxygen: list(markdown = TRUE)
