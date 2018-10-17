@@ -1,3 +1,13 @@
+By: Ryan J. Price
+
+The use cases for [ETL](https://en.wikipedia.org/wiki/Extract,_transform,_load) (extract, transform, load) have rapidly evolved along with the needs of businesses and researchers in the twenty-plus years since the Kimball Group first released [The Data Warehouse Toolkit](https://amzn.to/2NM1RWe) and popularized the need for well-designed ETL processes. The demand for flexibility and expressiveness in data transformation systems has outpaced many SQL-based RDBMS. Communities around tools like [R](https://www.r-project.org), [Python](https://www.python.org/), and [Julia](https://julialang.org/) have rapidly developed robust solutions to these problems.
+
+R often carries a reputation for being a language and software purely for statistical analysis. While loosely true, this also makes R a fantastic native candidate for a tabular data transformation engine. "ETL" need not carry the legacy connotation of "force everything into a star schema, in a data warehouse, using SQL". You can use R and its fantastic library of packages to design robust, production-ready data pipelines leading to and from nearly any system, easily applying any transformation logic in between.
+
+This presentation will be a demonstration of how to design R packages as data transformation and pipeline systems, and how to incorporate business logic into them. We will walk through defining functions that read, clean, manipulate, and write out disparate data sets, and then compose those functions into "main" production scripts.
+
+I will also show you how to wrap your functions around calls to `loggit()`, a [JSON logging package](https://cran.r-project.org/package=loggit) I wrote to capture failures in data and business logic validation. The transformations I will be demonstrating will likely rely on the tidyverse suite of packages, but you can just as well design these pipelines using any libraries of your choosing (data.table, base/stats, etc).
+
 How-to
 ======
 
