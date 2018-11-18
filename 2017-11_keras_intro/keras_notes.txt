@@ -1,0 +1,114 @@
+# is there a docker/rocker image for this?
+
+Installation is easy, if you use your CPU. Getting set up to use your GPU is a
+bit more involved.
+
+```r
+R> install.packages("keras")
+R> keras::install_keras()
+Error: Prerequisites for installing TensorFlow not available.
+
+Execute the following at a terminal to install the prerequisites:
+
+$ sudo apt-get install python-pip python-virtualenv
+
+R> q("no")
+```
+
+Okay, so maybe it's not _that_ easy... but the error gave us the command to
+run.  So let's do that at the terminal.
+
+```bash
+> sudo apt-get install python-pip python-virtualenv
+...
+```
+
+Now, back to R
+
+```
+> R
+R> keras::install_keras()
+...
+Installation of TensorFlow complete.
+
+
+Installation of Keras complete.
+
+R>
+```
+
+Sweet! Let's run a simple example to make sure everything is working.
+
+```r
+library(keras)
+mnist <- dataset_mnist()
+x_train <- mnist$train$x
+y_train <- mnist$train$y
+x_test <- mnist$test$x
+y_test <- mnist$test$y
+
+# reshape
+x_train <- array_reshape(x_train, c(nrow(x_train), 784))  # ka-boom
+```
+
+Balls, you need the latest development version to run the example on RStudio's
+site... (for reticulate::array_reshape)
+
+```
+git clone https://github.com/rstudio/reticulate.git
+git clone https://github.com/rstudio/keras.git
+git clone https://github.com/rstudio/tensorflow.git
+Rscript -e 'install.packages("zeallot")'
+R CMD build reticulate keras tensorflow
+R CMD INSTALL reticulate_* keras_* tensorflow_*
+```
+
+Okay, back to the example...
+
+```r
+# reshape (array_reshape in reticulate > 1.2 only)
+x_train <- array_reshape(x_train, c(nrow(x_train), 784))
+x_test <- array_reshape(x_test, c(nrow(x_test), 784))
+# rescale
+x_train <- x_train / 255
+x_test <- x_test / 255
+
+# one-hot encode
+y_train <- to_categorical(y_train, 10)
+y_test <- to_categorical(y_test, 10)
+
+# define the model
+model <- keras_model_sequential() 
+model %>% 
+  layer_dense(units = 256, activation = 'relu', input_shape = c(784)) %>% 
+  layer_dropout(rate = 0.4) %>% 
+  layer_dense(units = 128, activation = 'relu') %>%
+  layer_dropout(rate = 0.3) %>%
+  layer_dense(units = 10, activation = 'softmax')
+
+# summary of model details
+summary(model)
+
+# compile the model
+model %>% compile(
+  loss = 'categorical_crossentropy',
+  optimizer = optimizer_rmsprop(),
+  metrics = c('accuracy')
+)
+
+# train (takes a few minutes on a modest CPU--16 threads)
+history <- model %>% fit(
+  x_train, y_train, 
+  epochs = 30, batch_size = 128, 
+  validation_split = 0.2
+)
+
+# plot
+plot(history)
+
+# evaluate model performance
+model %>% evaluate(x_test, y_test)
+
+# generate predictions
+model %>% predict_classes(x_test)
+```

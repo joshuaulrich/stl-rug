@@ -1,0 +1,253 @@
+```{r setup, include=FALSE}
+library(knitr)
+#opts_chunk$set(cache=FALSE)
+#http://www.fossfinance.com:8787/files/keras_intro.pdf
+#https://keras.rstudio.com/index.html
+#https://keras.io/getting-started/sequential-model-guide/
+```
+
+---
+title: "Introduction to Keras"
+subtitle: "Saint Louis R User Group"
+author: "Joshua Ulrich"
+date: 2017-11-09
+output: beamer_presentation
+geometry: margin=1in
+classoption: t
+pandoc_args: [ "-fmarkdown-implicit_figures" ]
+---
+
+# Disclaimer
+
+![](no_idea.png)
+
+# What is Keras?
+- High-level neural networks API
+- Focus on prototyping and fast experimentation via
+    - user friendliness
+    - modularity
+    - extensibility
+- Can run on CPU or GPU
+- Can run on top of [TensorFlow](https://github.com/tensorflow/tensorflow), [CNTK](https://github.com/Microsoft/cntk), or [Theano](https://github.com/Theano/Theano)
+- Supports convolutional and recurrent networks
+
+# Why deep learning?
+
+- It's the new hotness.
+
+
+# Installing Keras
+Installation is easy, if you use the CPU. Installation using one or more GPUs is more involved. We'll install using the CPU, which is the default.
+
+```{r eval=FALSE}
+R> install.packages("keras")
+R> keras::install_keras()
+```
+
+# Installing Keras
+
+Okay, so maybe it's not _that_ easy...
+\newline
+\newline
+
+```{r eval=FALSE}
+R> install.packages("keras")
+R> keras::install_keras()
+Error: Prerequisites for installing TensorFlow
+  not available.
+
+Execute the following at a terminal to install
+the prerequisites:
+
+$ sudo apt-get install python-pip python-virtualenv
+
+R> q("no")
+```
+
+# Installing Keras
+
+... but the error gave us the command we need to run in order to continue the
+installation.
+
+I'm using Ubuntu, but the errors on other operating systems are just as helpful.
+
+So let's run that command at the terminal.
+
+```bash
+> sudo apt-get install python-pip python-virtualenv
+```
+
+# Installing Keras
+
+Now, back to R
+
+```{r eval=FALSE}
+R> keras::install_keras()
+...
+Installation of TensorFlow complete.
+
+
+Installation of Keras complete.
+
+R>
+```
+
+Sweet! Let's run a simple example to make sure everything is working.
+
+# Example
+
+We can learn the basics of Keras by walking through a simple example: recognizing handwritten digits from the [MNIST](https://keras.io/getting-started/sequential-model-guide/) dataset. MNIST consists of 28 x 28 grayscale images of handwritten digits like:
+
+![](https://keras.rstudio.com/images/MNIST.png)
+
+# Example
+
+```{r eval=TRUE, echo=TRUE}
+library(keras)
+mnist <- dataset_mnist()
+x_train <- mnist$train$x
+y_train <- mnist$train$y
+x_test <- mnist$test$x
+y_test <- mnist$test$y
+
+n_train <- nrow(x_train)
+n_test <- nrow(x_test)
+```
+
+# Reshape the data
+
+R stores arrays in column-major order, while Keras stores them in row-major order.
+
+```{r eval=FALSE, echo=TRUE}
+# reshape
+x_train <- array_reshape(x_train, c(n_train, 784))
+Error in array_reshape(x_train, c(n_train, 784)) :
+  could not find function "array_reshape"
+```
+
+Whoops, you need the latest development version (for `reticulate::array_reshape`) in order to run the example on [https://keras.rstudio.com](https://keras.rstudio.com)
+
+# Installing development versions
+
+You can use:
+
+```{r eval=FALSE}
+remotes::install_github("rstudio/keras")
+# or
+devtools::install_github("rstudio/keras")
+```
+
+These commands currently (re-)install (development versions?) all dependencies. Building some packages (e.g. Rcpp) from source can take a bit of time.
+
+# Installing development versions
+
+I'll install the packages individually instead.
+
+```bash
+git clone https://github.com/rstudio/reticulate.git
+git clone https://github.com/rstudio/keras.git
+git clone https://github.com/rstudio/tensorflow.git
+Rscript -e 'install.packages("zeallot")'
+R CMD build reticulate keras tensorflow
+R CMD INSTALL reticulate_* keras_* tensorflow_*
+```
+
+Okay, back to the example...
+
+# Data munging
+
+```{r eval=TRUE, echo=TRUE}
+# reshape (array_reshape in reticulate > 1.2 only)
+x_train <- array_reshape(x_train, c(n_train, 784))
+x_test <- array_reshape(x_test, c(n_test, 784))
+
+# rescale
+x_train <- x_train / 255
+x_test <- x_test / 255
+
+# one-hot encode
+y_train <- to_categorical(y_train, 10)
+y_test <- to_categorical(y_test, 10)
+```
+
+# Two ways to define models
+
+Define an 'empty' model and add layers one at a time.
+
+```{r eval=FALSE, echo=TRUE}
+model <- keras_model_sequential() 
+model %>% 
+  layer_dense(units = 256, activation = 'relu',
+              input_shape = 784) %>% 
+  layer_dropout(rate = 0.4) %>% 
+  layer_dense(units = 128, activation = 'relu') %>%
+  layer_dropout(rate = 0.3) %>%
+  layer_dense(units = 10, activation = 'softmax')
+```
+
+# Two ways to define models
+
+Specify the layers in the model constructor.  You can add more later, if you want.
+
+```{r eval=TRUE, echo=TRUE}
+model <- keras_model_sequential(
+  layers = list(
+    layer_dense(NULL, 256, 'relu', input_shape = 784),
+    layer_dropout(rate = 0.4),
+    layer_dense(NULL, 128, 'relu'),
+    layer_dropout(rate = 0.3),
+    layer_dense(NULL, 10, 'softmax')
+  ) 
+)
+```
+
+# Summary of model details
+
+```{r eval=TRUE, echo=TRUE}
+summary(model)
+```
+
+# Compile the model
+
+Need to configure the learning process before training the model. This is done via `compile()`, which has 3 primary arguments:
+
+- objective function (the function you're optimizing)
+- optimizer (method used to find the function minimum)
+- metrics (what are evaluated during training & testing)
+
+```{r eval=TRUE, echo=TRUE}
+compile(model,
+  loss = 'categorical_crossentropy',
+  optimizer = optimizer_rmsprop(),
+  metrics = c('accuracy')
+)
+```
+
+# Fitting / Training
+```{r eval=TRUE, echo=TRUE, cache=TRUE}
+# takes a few minutes on a modest CPU--16 threads
+fit_model <- fit(
+  model, x_train, y_train, 
+  epochs = 30, batch_size = 128, 
+  validation_split = 0.2
+)
+```
+```{r eval=FALSE, echo=FALSE}
+saveRDS(fit_model, file = "fit_model.rds")
+```
+
+# Plot fit results
+```{r eval=TRUE, echo=TRUE, fig.keep='last'}
+plot(fit_model)
+```
+
+# Evaluate model performance
+```{r eval=TRUE, echo=TRUE}
+evaluate(model, x_test, y_test)
+```
+
+# generate predictions
+```{r eval=TRUE, echo=TRUE}
+predictions <- predict_classes(model, x_test)
+head(predictions)
+```
