@@ -1,0 +1,13 @@
+*.log
+*.json
+*.csv
+*.txt
+*.db*
+*.rds
+*.html
+.Rproj.user
+README.*
+!README.md
+
+*.Rcheck/
+*.tar.gz
