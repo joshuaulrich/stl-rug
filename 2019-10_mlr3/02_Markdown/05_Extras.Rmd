@@ -1,0 +1,109 @@
+---
+title: "mlr3 Extras"
+date: "9/29/2019 (updated: `r Sys.Date()`)"
+output: 
+    html_document:
+      toc: true
+      toc_float: true
+      toc_depth: 4
+      theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r setup_part_one, echo = FALSE}
+
+library(ggplot2)
+library(ggthemes)
+library(data.table)
+
+library(mlr3)
+library(mlr3learners)
+library(mlr3tuning)
+library(mlr3pipelines)
+library(mlr3viz)
+library(mlr3db)
+
+attrDT <- fread("../00_Data/attrition_train.csv")
+attrDT[,Attrition := as.factor(Attrition)]
+
+tsk_attr <- TaskClassif$new(id="attrition", backend = attrDT, 
+                            target = "Attrition", positive = "Yes")
+
+lrn_dummy  <- lrn("classif.featureless")
+lrn_rpart  <- lrn("classif.rpart", predict_type = "prob")
+lrn_ranger <- lrn("classif.ranger", predict_type = "prob")
+lrn_log    <- lrn("classif.log_reg", predict_type = "prob")
+
+msr_acc <- msr("classif.acc")
+msr_auc <- msr("classif.auc")
+```
+
+```{r}
+library(RMariaDB)
+library(DBI)
+library(dplyr)
+library(dbplyr)
+
+db_user <- 'root'
+db_password <- 'password'
+db_name <- 'testdb'
+db_host <- '127.0.0.1'
+db_port <- 3306
+
+con <- dbConnect(MariaDB(), user = db_user, password = db_password,
+                 dbname = db_name, host = db_host, port = db_port,
+                 bigint = "integer")
+
+attr_tbl <- tbl(con, "attrition")
+attr_tbl <- attr_tbl %>%
+  mutate(row_id = row_number())
+
+b <- as_data_backend(attr_tbl, primary_key = "row_id")
+tsk_db <- TaskClassif$new(id="attritionDB", backend = b, target = "Attrition",
+                          positive = "Yes")
+```
+
+```{r split_data}
+set.seed(4411)
+traindb.idx <- sample(seq_len(tsk_db$nrow), 0.7 * tsk_db$nrow)
+testdb.idx <- setdiff(seq_len(tsk_db$nrow), traindb.idx)
+
+```
+
+
+```{r}
+lrn_rpart$train(tsk_db, row_ids = traindb.idx)
+
+lrn_rpart$timings
+
+lrn_rpart
+
+```
+
+```{r}
+db_pred <- lrn_rpart$predict(tsk_db, row_ids = testdb.idx)
+db_pred$score(c(msr_auc, msr_acc))
+
+```
+
+```{r}
+lrn_rpart$train(tsk_attr)
+lrn_rpart$timings
+```
+
+
+
+## Parallelization 
+
+`future::plan("multiprocess")`
+
+need to have `future.apply` package installed as well.
+
+### SessionInfo
+```{r sessionInfo}
+sessionInfo()
+
+```

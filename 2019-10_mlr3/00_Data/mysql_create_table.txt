@@ -1,0 +1,93 @@
+> tsk_attr$feature_names
+ [1] "Age"                      "BusinessTravel"           "DailyRate"               
+ [4] "Department"               "DistanceFromHome"         "Education"               
+ [7] "EducationField"           "EnvironmentSatisfaction"  "Gender"                  
+[10] "HourlyRate"               "JobInvolvement"           "JobLevel"                
+[13] "JobRole"                  "JobSatisfaction"          "MaritalStatus"           
+[16] "MonthlyIncome"            "MonthlyRate"              "NumCompaniesWorked"      
+[19] "OverTime"                 "PercentSalaryHike"        "PerformanceRating"       
+[22] "RelationshipSatisfaction" "StockOptionLevel"         "TotalWorkingYears"       
+[25] "TrainingTimesLastYear"    "WorkLifeBalance"          "YearsAtCompany"          
+[28] "YearsInCurrentRole"       "YearsSinceLastPromotion"  "YearsWithCurrManager"    
+> tsk_attr$feature_types
+                          id    type
+ 1:                      Age integer
+ 2:           BusinessTravel  factor
+ 3:                DailyRate integer
+ 4:               Department  factor
+ 5:         DistanceFromHome integer
+ 6:                Education ordered
+ 7:           EducationField  factor
+ 8:  EnvironmentSatisfaction ordered
+ 9:                   Gender  factor
+10:               HourlyRate integer
+11:           JobInvolvement ordered
+12:                 JobLevel integer
+13:                  JobRole  factor
+14:          JobSatisfaction ordered
+15:            MaritalStatus  factor
+16:            MonthlyIncome integer
+17:              MonthlyRate integer
+18:       NumCompaniesWorked integer
+19:                 OverTime  factor
+20:        PercentSalaryHike integer
+21:        PerformanceRating ordered
+22: RelationshipSatisfaction ordered
+23:         StockOptionLevel integer
+24:        TotalWorkingYears integer
+25:    TrainingTimesLastYear integer
+26:          WorkLifeBalance ordered
+27:           YearsAtCompany integer
+28:       YearsInCurrentRole integer
+29:  YearsSinceLastPromotion integer
+30:     YearsWithCurrManager integer
+                          id    type
+						  
+CREATE TABLE attrition (
+	Age INT,
+	Attrition VARCHAR(5),
+	BusinessTravel VARCHAR(30),
+	DailyRate INT,
+	Department VARCHAR(50),
+	DistanceFromHome INT,
+	Education VARCHAR(30),
+	EducationField VARCHAR(30),
+	EnvironmentSatisfaction VARCHAR(30),
+	Gender VARCHAR(10),
+	HourlyRate INT,
+	JobInvolvement VARCHAR(20),
+	JobLevel INT,
+	JobRole VARCHAR(30),
+	JobSatisfaction VARCHAR(30),
+	MaritalStatus VARCHAR(30),
+	MonthlyIncome INT,
+	MonthlyRate INT,
+	NumCompaniesWorked INT,
+	OverTime VARCHAR(10),
+	PercentSalaryHike INT,
+	PerformanceRating VARCHAR(20),
+	RelationshipSatisfaction VARCHAR(20),
+	StockOptionLevel INT,
+	TotalWorkingYears INT,
+	TrainingTimesLastYear INT,
+	WorkLifeBalance VARCHAR(20),
+	YearsAtCompany INT,
+	YearsInCurrentRole INT,
+	YearsSinceLastPromotion INT,
+	YearsWithCurrManager INT
+)
+
+1
+2
+3
+4
+5
+6
+LOAD DATA INFILE 'D:/Users/Matt/GitHub/stlrug_mlr3/00_Data/attrition_raw.csv' 
+INTO TABLE attrition
+FIELDS TERMINATED BY ',' 
+ENCLOSED BY '"'
+LINES TERMINATED BY '\n'
+IGNORE 1 ROWS;
+
+D:/Users/Matt/GitHub/stlrug_mlr3/00_Data/attrition_raw.csv

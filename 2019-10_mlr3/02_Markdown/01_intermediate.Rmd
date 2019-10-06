@@ -1,0 +1,62 @@
+---
+title: "mlr3 Intermediate"
+date: "9/29/2019"
+output: 
+    html_document:
+      toc: true
+      toc_float: true
+      toc_depth: 3
+      theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r setup_part_one, echo = FALSE}
+# recreate tasks and learners from part 1
+library(ggplot2)
+library(ggthemes)
+library(data.table)
+
+library(mlr3)
+library(mlr3learners)
+library(mlr3viz)
+
+attrDT <- as.data.table(rsample::attrition)
+tsk_attr <- TaskClassif$new(id="attrition", backend = attrDT, 
+                            target = "Attrition", positive = "Yes")
+
+lrn_dummy  <- lrn("classif.featureless")
+lrn_rpart  <- lrn("classif.rpart")
+lrn_ranger <- lrn("classif.ranger")
+```
+
+## Resampling
+
+Review mlr3 resampling methods available.
+```{r resampling_overview}
+as.data.table(mlr_resamplings)
+```
+
+Additional resampling methods for special use cases are (or will be) available in extension package:
+
+- [mlrspatiotemporal](https://github.com/mlr-org/mlr3spatiotemporal)
+
+The train/predict/measure process used in the basics overview is equivalent to the "holdout" resampling method.
+
+```{r holdout}
+res_holdout <- rsmp("holdout")
+res_holdout
+
+```
+
+The 2/3 default ratio can be changed during during object construction:
+```{r holdout_2}
+res_holdout <- rsmp("holdout", ratio = 0.75)
+res_holdout
+```
+
+Note:
+
+- `Instantiated: FALSE` means the resampling strategy has not been applied to a dataset yet.

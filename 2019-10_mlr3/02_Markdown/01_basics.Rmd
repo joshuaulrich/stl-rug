@@ -1,0 +1,186 @@
+---
+title: "mlr3 Basics"
+#author: "Matt Dube"
+date: "9/29/2019 (updated: `r Sys.Date()`)"
+output: 
+    html_document:
+      toc: true
+      toc_float: true
+      toc_depth: 3
+      theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+## Setup
+
+Load basic libraries and data. 
+
+We'll be using the Employee Attrition dataset from the rsample package.
+
+```{r setup_part_one}
+library(ggplot2)
+library(ggthemes)
+library(data.table)
+
+library(mlr3)
+library(mlr3viz)
+
+attrDT <- fread(here::here("00_Data/", "attrition_train.csv"))
+attrDT[,Attrition:=as.factor(Attrition)]
+
+#attrDT <- as.data.table(rsample::attrition)
+```
+
+### review data
+
+```{r setup_part_two}
+attrDT[,1:5]
+
+table(attrDT$Attrition)
+
+```
+
+## mlr3 workflow
+The list of built-in learners (algorithms) is stored in the R6 dictionary mlr_learers.
+
+```{r}
+as.data.table(mlr_learners)
+```
+
+<br>
+You can load additional learners using the <font face=bold color="red">mlr3learners</font> package.
+
+```{r more_learners}
+library(mlr3learners)
+
+as.data.table(mlr_learners)[,.(key,predict_types,packages)]
+
+```
+
+<br>
+This is a classification problem. We're going to next create a task and define a couple of learners.
+
+### Create Task
+
+```{r create_task}
+
+tsk_attr <- TaskClassif$new(id="attrition", backend = attrDT, 
+                            target = "Attrition", positive = "Yes")
+tsk_attr
+    
+```
+
+Review task properties.
+
+```{r}
+tsk_attr$data()[,1:4]
+
+tsk_attr$feature_names
+```
+
+There is quite a bit of information available on a task. Here are some examples, but you should explore and review others.
+
+- `tsk_attr$feature_names`
+- `tsk_attr$feature_types`
+- `tsk_attr$target_names`
+- `tsk_attr$ncol`
+- `tsk_attr$nrow`
+- `tsk_attr$missings()`
+
+### Create Learners
+
+```{r create_learners}
+lrn_dummy  <- lrn("classif.featureless")
+lrn_rpart  <- lrn("classif.rpart")
+lrn_ranger <- lrn("classif.ranger")
+
+```
+
+<br>
+Review the learners:
+<br>
+```{r lrn_review}
+lrn_dummy
+lrn_rpart
+lrn_ranger
+```
+
+Now that we have a task (data), and some learners (algrithms), we can split our data and start training models.
+
+### Data Split
+mlr3 splits data by creating train and test indices. Separate datasets are not created.
+
+```{r split_data}
+set.seed(4411)
+train.idx <- sample(seq_len(tsk_attr$nrow), 0.7 * tsk_attr$nrow)
+test.idx <- setdiff(seq_len(tsk_attr$nrow), train.idx)
+
+```
+
+### Train Models
+And now we can train a model for each learner using this basic syntax:
+
+`learner$train(task, data)`
+<br>
+```{r train_dummy}
+lrn_dummy$train(tsk_attr, row_ids = train.idx)
+
+```
+
+Let's compare the rpart learner before and after training:
+
+```{r train_rpart}
+lrn_rpart
+lrn_rpart$train(tsk_attr, train.idx)
+lrn_rpart
+
+```
+
+Now do the same for the random forest learner:
+```{r train_ranger}
+lrn_ranger
+lrn_ranger$train(tsk_attr, train.idx)
+lrn_ranger
+
+```
+
+Now that we have our models trained we can make predictions on the test data and check their performance.
+
+### Predict
+```{r predict_test}
+pred_dummy  <- lrn_dummy$predict(tsk_attr, test.idx)
+pred_dummy
+pred_rpart  <- lrn_rpart$predict(tsk_attr, test.idx)
+pred_rpart
+pred_ranger <- lrn_ranger$predict(tsk_attr, test.idx)
+pred_ranger
+
+```
+
+### Measure Performance
+You can review the available measures, which are stored in the R6 dictionary `mlr_measures`.
+```{r measure_list}
+as.data.table(mlr_measures)[task_type == "classif"][,.(key)]
+```
+
+For simplicity we're going to only look at the accuracy score and the confusion matrix for each model.
+
+```{r measure_models}
+meas_acc <- msr("classif.acc")
+
+pred_dummy$score(meas_acc)
+pred_dummy$confusion
+pred_rpart$score(meas_acc)
+pred_rpart$confusion
+pred_ranger$score(meas_acc)
+pred_ranger$confusion
+```
+
+### SessionInfo
+```{r sessionInfo}
+sessionInfo()
+
+```

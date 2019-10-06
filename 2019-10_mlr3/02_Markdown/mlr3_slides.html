@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+  <head>
+    <title>Maching Learning in R with mlr3</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="Matt Dube" />
+    <link href="libs/remark-css/mlr3.css" rel="stylesheet" />
+    <link href="libs/remark-css/middlebury-fonts.css" rel="stylesheet" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+# Maching Learning in R with mlr3
+## with mlr3
+### Matt Dube
+### 2019/09/26 (updated: 2019-10-06)
+
+---
+
+
+
+
+# Intro 
+Topic Overview
+- what we won't be covering
+  - this is not a machine learning how-to
+  - we won't be going in-depth on feature engineering, resampling, model selection, etc.
+
+- what we will be covering
+  - overview of mlr3 and the mlr3 family of packages
+  - several small demos, and
+  - a bigger demo that puts it all together
+
+- the dataset we'll be using for the demos is the attrition dataset from the rsample package.
+ - I've set aside 15% of the dataset to be used as "new data"
+ - the demos make no attempt to create good models - only to show the tools and workflow of mlr3
+    - no feature engineering done, no features removed
+    - some things are done to show an example of a step, not because they're logical:)
+---
+# Notes
+
+&lt;b&gt;Keep in mind:&lt;/b&gt;
+- mlr3 (and extension packages) are under active development
+
+- examples today may not  work next week
+
+- if something breaks, the [documentation](https://mlr3.mlr-org.com/index.html) is very good, and updated often
+
+- this is a &lt;strong&gt;BIG&lt;/strong&gt; topic, we won't cover it all
+ - read the docs, and check the references at the end of this deck
+ 
+- there is some different terminology and syntax
+ - don't get hung up on the differences and quirks
+ - some of this may offend your normal R sensibilities
+ 
+ 
+
+
+
+---
+
+# Machine Learning in R: Current State
+.pull-left[
+.large[&lt;strong&gt;Individual Packages&lt;/strong&gt;
+
+- C5.0
+- earth
+- glm
+- glmnet
+- keras
+- randomForest
+- ranger
+- rpart
+- xgboost
+- many others!]
+]
+
+.pull-right[
+.large[&lt;strong&gt;Meta Packages&lt;/strong&gt;
+
+Current Generation
+- Caret
+- mlr
+
+Next Generation
+- tidymodels
+- mlr3]
+]
+
+R does not define a standardized interface for its machine-learning algorithms. Therefore, for any non-trivial experiments, you need to write lengthy, tedious and error-prone wrappers to call the different algorithms and unify their respective output.
+
+Additionally you need to implement infrastructure to:
+
+- resample your models
+- optimize hyperparameters
+- select features
+- cope with pre- and post-processing of data and compare models in a statistically meaningful way.
+
+
+---
+# Why mlr3?
+&lt;strong&gt;mlr&lt;/strong&gt;
+
+- mlr was first released to CRAN in 2013
+
+- now has over &lt;b&gt;&lt;font color = "red"&gt;30,000&lt;/font&gt;&lt;/b&gt; lines of code
+
+- over &lt;b&gt;&lt;font color = "red"&gt;120&lt;/font&gt;&lt;/b&gt; direct dependencies and over &lt;strong&gt;1400&lt;/strong&gt; indirect dependencies
+
+- dependency API changes break mlr
+
+- unit testing takes a long time, and most tests are disabled to comply with CRAN policies
+
+- S3 object oriented (OO) toolkit has limitations in large projects
+
+- NAMESPACE has &gt; &lt;b&gt;&lt;font color = "red"&gt;1200&lt;/font&gt;&lt;/b&gt; lines, &gt; 440 export functions and objects.
+
+- only works on in-memory data
+
+- no nested parallelization
+
+- too difficult to extend, maintain, and add new features 
+
+- complex code base makes it difficult for new contributors
+
+---
+# mlr3 architectural changes
+&lt;strong&gt;mlr3&lt;/strong&gt;
+- utilizes R6 OO toolkit
+
+- truly object-oriented: data and methods together
+
+  - inheritance
+  - reference semantics
+
+- embrace data.table, both for arguments and internal data structures
+
+- light on dependencies 
+ - ~ 10 packages, 4 of which are developed by mlr team
+ - R6, data.table, Metrics, lgr, digest, uuid, mlbench 
+
+- utilizes future and future.apply for parallelization
+
+- only basic building blocks are in the core mlr3 package
+
+- extra packages contain additional features and capabilities
+
+---
+# mlr3 workflow
+.pull-left[
+The mlr3 package provides R6 classes for the essential building blocks of the machine learning workflow:
+- A &lt;strong&gt;task&lt;/strong&gt; encapsulates the data along with additional information, such as what the prediction target is.
+
+- A &lt;strong&gt;learner&lt;/strong&gt; encapsulates one of R's many machine learning algorithms and allows to train models and make predictions. Most learners have hyperparameters that affect their operation.
+
+- A &lt;strong&gt;measure&lt;/strong&gt; computes a numeric score based on predicted and ground-truth values and their difference.
+
+- A &lt;strong&gt;resampling&lt;/strong&gt; strategy specifies a series of train and test sets and is used to assess the performance of an algorithm.
+]
+
+.pull-right[
+![mlr3 workflow.](media/workflow.png)
+]
+
+---
+
+# mlr3 and its extension packages
+
+| Package | Functionality |
+| :-      | :------------ |
+| `mlr3`  | Framework for machine learning: `Task`, `Learner`, `resample()` and `benchmark()` |
+| `mlr3learners` | Concrete `Learner`s for many popular machine learning implementations |
+| `mlr3pipelines` | Dataflow programming of machine learning workflows. |
+| `mlr3tuning` | Hyperparameter tuning for machine learning algorithms. |
+| `mlr3filter` | Feature filtering |
+| `mlr3viz` | Visualisations and plots |
+| `paradox` | Auxiliary package providing (hyper)parameter handling |
+| `mlr3misc` | Auxiliary functions |
+| `mlr3fswrap` | Variable selection wrappers |
+| `mlr3survival` | Extensions for survival analysis |
+| `mlr3ordinal` | Extensions for ordinal regression |
+| `mlr3spatiotemporal` | Extensions for spatiotemporal resampling methods |
+| `mlr3hyperband` | Implements the "hyperband" approach for hyperparameter tuning |
+
+???
+mlr3fswrap	Variable selection wrappers like sequential forward/backward search, exhaustive search, or genetic algorithms.
+---
+# mlr3 extension packages &lt;strong&gt;planned&lt;/strong&gt;
+
+| Package | Functionality |
+| :-      | :------------ |
+| `mlr3cluster` | Extensions for cluster analysis |
+| `mlr3fda` | Extensions for functional data analysis |
+| `mlr3forecasting` | Extensions for forecasting |
+| `mlr3keras` | Extnensions for deep learning via keras |
+| `mlr3extralearners` | Extension to source additional learners from remote sources |
+
+---
+
+# mlr3 overview
+pre-defined tasks, learners, resamplings, and measures are stored in the following R6 dictionaries:
+- mlr_tasks
+- mlr_learners
+- mlr_resamplings
+- mlr_measures
+
+
+&lt;b&gt;mlr_tasks: built-in data sets&lt;/b&gt;
+
+```r
+as.data.table(mlr_tasks)[,.(key, task_type)]
+```
+
+```
+##               key task_type
+## 1: boston_housing      regr
+## 2:  german_credit   classif
+## 3:           iris   classif
+## 4:         mtcars      regr
+## 5:           pima   classif
+## 6:          sonar   classif
+## 7:           spam   classif
+## 8:           wine   classif
+## 9:            zoo   classif
+```
+
+---
+# mlr3 learners: base package
+
+```r
+as.data.table(mlr_learners)[,list(key,packages, predict_types)]
+```
+
+```
+##                    key packages predict_types
+## 1:       classif.debug          response,prob
+## 2: classif.featureless          response,prob
+## 3:       classif.rpart    rpart response,prob
+## 4:    regr.featureless    stats   response,se
+## 5:          regr.rpart    rpart      response
+```
+
+---
+
+# mlr3 learners: extension package loaded
+
+```r
+library(mlr3learners)
+as.data.table(mlr_learners)[,list(key,packages, predict_types)]
+```
+
+```
+##                     key    packages predict_types
+##  1:       classif.debug             response,prob
+##  2: classif.featureless             response,prob
+##  3:      classif.glmnet      glmnet response,prob
+##  4:        classif.kknn  withr,kknn response,prob
+##  5:         classif.lda        MASS response,prob
+##  6:     classif.log_reg       stats response,prob
+##  7: classif.naive_bayes       e1071 response,prob
+##  8:         classif.qda        MASS response,prob
+##  9:      classif.ranger      ranger response,prob
+## 10:       classif.rpart       rpart response,prob
+## 11:         classif.svm       e1071 response,prob
+## 12:     classif.xgboost     xgboost response,prob
+## 13:    regr.featureless       stats   response,se
+## 14:         regr.glmnet      glmnet      response
+## 15:           regr.kknn  withr,kknn      response
+## 16:             regr.km DiceKriging   response,se
+## 17:             regr.lm       stats   response,se
+## 18:         regr.ranger      ranger   response,se
+## 19:          regr.rpart       rpart      response
+## 20:            regr.svm       e1071      response
+## 21:        regr.xgboost     xgboost      response
+##                     key    packages predict_types
+```
+
+---
+
+# mlr3 resamplings
+
+```r
+as.data.table(mlr_resamplings)
+```
+
+```
+##            key                 params iters
+## 1:   bootstrap stratify,repeats,ratio    30
+## 2:      custom                            0
+## 3:          cv         stratify,folds    10
+## 4:     holdout         stratify,ratio     1
+## 5: repeated_cv stratify,repeats,folds   100
+## 6: subsampling stratify,repeats,ratio    30
+```
+
+---
+
+# mlr3 measures
+.pull-left[
+
+```r
+as.data.table(mlr_measures)[task_type == "classif"][,.(key)]
+```
+
+```
+##                     key
+##  1:         classif.acc
+##  2:         classif.auc
+##  3:          classif.ce
+##  4:       classif.costs
+##  5:          classif.f1
+##  6:         classif.fdr
+##  7:          classif.fn
+##  8:         classif.fnr
+##  9:         classif.for
+## 10:          classif.fp
+## 11:         classif.fpr
+## 12:         classif.npv
+## 13:         classif.ppv
+## 14:   classif.precision
+## 15:      classif.recall
+## 16: classif.sensitivity
+## 17: classif.specificity
+## 18:          classif.tn
+## 19:         classif.tnr
+## 20:          classif.tp
+## 21:         classif.tpr
+##                     key
+```
+]
+
+.pull-right[
+
+```r
+as.data.table(mlr_measures)[task_type != "classif", .(key)]
+```
+
+```
+##          key
+## 1:  regr.mae
+## 2:  regr.mse
+## 3: regr.rmse
+```
+
+]
+
+---
+
+# mlr3 filters
+|Name |	Task Type |	Feature Types |	Package |
+| :-  | :---------| :-------------| :-------|
+| `anova` |	Classif | Integer, Numeric | stats |
+| `auc` | Classif |	Integer, Numeric | Metrics|
+| `carscore` | Regr |	Numeric | care
+| `cmim` | Classif &amp; Regr |	Integer, Numeric, Factor, Ordered |	praznik |
+| `correlation` | Regr |	Integer, Numeric | stats |
+| `disr` | Classif |	Integer, Numeric, Factor, Ordered |	praznik |
+| `importance` | Universal |	Logical, Integer, Numeric, Character, Factor, Ordered |	rpart|
+| `information_gain` | Classif &amp; Regr |	Integer, Numeric, Factor, Ordered |	FSelectorRcpp|
+| `jmi` | Classif |	Integer, Numeric, Factor, Ordered |	praznik |
+| `jmim` | Classif |	Integer, Numeric, Factor, Ordered |	praznik |
+| `kruskal_test` |	Classif |	Integer, Numeric |	stats |
+| `mim` | Classif |	Integer, Numeric, Factor, Ordered |	praznik |
+| `mrmr` | Classif &amp; Regr |	Numeric, Factor, Integer, Character, Logical |	praznik |
+| `njmim` |	Classif	Integer, Numeric, Factor, Ordered |	praznik |
+| `performance` | Universal |	Logical, Integer, Numeric, Character, Factor, Ordered |	rpart |
+| `variance` | Classif &amp; Regr |	Integer, Numeric | stats |
+
+---
+
+# installation
+
+Install the mlr3 packages from [Github](https://github.com/mlr-org):
+
+
+```r
+remotes::install_github("mlr-org/mlr3")
+remotes::install_github("mlr-org/mlr3db")
+remotes::install_github("mlr-org/mlr3viz")
+remotes::install_github("mlr-org/mlr3learners")
+remotes::install_github("mlr-org/mlr3tuning")
+remotes::install_github("mlr-org/mlr3filters")
+remotes::install_github("mlr-org/mlr3pipelines")
+```
+
+
+.footnote[
+[1] Check [mlr3 github page](https://github.com/mlr-org/mlr3) for current installation instructions 
+
+[2] See current list of [mlr3 extension packages](https://github.com/mlr-org/mlr3/wiki/Extension-Packages) on github  
+]
+
+---
+
+# modeling
+Considering how we are going to tackle the problem relates closely to what `mlr3` entities we will use.
+
+- What is the problem we are trying to solve?
+  - i.e. what **Task** do we use?
+  - Binary classification.
+  - `\(\Rightarrow\)` We use `TaskClassif`.
+- What are appropriate learning algorithms?
+  - i.e. what **Learner** do we use?
+  - Logistic regression, CART, Random Forest
+  - `\(\Rightarrow\)` `lrn("classif.log_reg")`, `lrn("classif.rpart")`, `lrn("classif.ranger")`
+- How do we evaluate "good" performance? `\(\Rightarrow\)` Depends on many things! Cost of false positive vs. false negative, legal requirements, ...
+  - i.e. what **Measure** do we use?
+  - We start with misclassification error and will also consider AUC.
+  - `\(\Rightarrow\)` `msr("classif.ce")`, `msr("classif.auc")`
+  
+---
+# create task
+
+a new classification task is created with:
+
+`task = TaskClassif$new(id = "GermanCredit", backend = credit, target = "class")`
+
+- id = task identifier, optional
+- backend = backend sets the dataset for the task. 
+- target =  target variable in the backend dataset. 
+- positive = optional - which factor of the target variable is the positive class.
+
+The created task is an R6 object. There are several methods that can be used to review the task details.
+
+| method/field | outputs |
+| :-      | :------------ |
+| `task` | review task properties |
+| `task$ncol` | number of columns in task (dataset)|
+| `task$nrow` | number of rows in task (dataset) |
+| `task$formula()` | default modeling formula |
+| `task$feature_names` | list of feature names |
+| `task$feature_types` | feature data types |
+| `task$class_names` | target variable classes |
+| `task$col_roles` | role of each column (typically features and target) |
+| `task$data()` | dataset defined in task |
+
+---
+
+# create learners
+
+`lrn("classif.ranger")`
+
+`lrn("classif.xgboost")`
+
+You can query a list of learners with 
+
+`as.data.table(mlr_learners)`
+
+Review learner:
+
+```r
+lrn("classif.xgboost")
+```
+
+```
+## &lt;LearnerClassifXgboost:classif.xgboost&gt;
+## * Model: -
+## * Parameters: nrounds=1, verbose=0
+## * Packages: xgboost
+## * Predict Type: response
+## * Feature types: integer, numeric
+## * Properties: importance, missings, multiclass, twoclass, weights
+```
+
+
+---
+
+# PipeOp
+
+- The most basic unit of functionality within `mlrpipelines` is the &lt;stron&gt;PipeOp&lt;/strong&gt;.
+
+- The PipeOp represents a transformativeo operation on input leading to output.
+
+- PipeOps behave similar to functions, except  their behavior is determined by their `$state`
+
+- The mlr3 pipeline order and methodology has been carefully constructed to overcome shortcomings in common practices. 
+
+- The preprocessing methods (`pca`, `encode`, `impute`, `scale`, etc.) could be just be applied to training data and validation data separately, or they could be applied before resampling. 
+
+- This is not recommended because:
+
+  - preprocessing of each instance of prediction data (validation) should not depend on the remaining validation data.
+
+  - if preprocessing is performed before resampling is done, information about the test set can leak into the training set. Resampling should evaluate the &lt;strong&gt;generalization&lt;/strong&gt; performance of the entire machine learning method.
+
+
+---
+# graphs
+- `mlr3pipelines` is a dataflow programming toolkit utilising the mlr3 package. 
+
+- Machine learning workflows can be written as directed Graphs 
+  - Graphs represent data flows between preprocessing, model fitting, and ensemble learning units 
+  
+  - In computer programming, dataflow programming is a programming paradigm that models a program as a directed graph of the data flowing between operations.
+.pull-left[![mlr3 graph pipeline.](media/pipeline.png) ]
+  
+
+.footnote[
+[1] See [Dataflow Wikipedia Page](https://en.wikipedia.org/wiki/Dataflow_programming) for more info on Dataflow programming.
+
+[2] See [DAGs Wikipedia Page](https://en.wikipedia.org/wiki/Directed_acyclic_graph) for more info on Directed Acryllic Graphs.
+]
+---
+
+# pipelines
+
+Each `PipeOp` is an R6 class. Built-in `PipeOp`s are available in the `mlr3pipelines` package.
+
+
+```r
+library(mlr3pipelines)
+
+as.data.table(mlr_pipeops)[, .(key, input.num, output.num)][1:21]
+```
+
+```
+##                 key input.num output.num
+##  1:          boxcox         1          1
+##  2:          branch         1         NA
+##  3:           chunk         1         NA
+##  4:  classbalancing         1          1
+##  5:      classifavg        NA          1
+##  6:        colapply         1          1
+##  7: collapsefactors         1          1
+##  8:            copy         1         NA
+##  9:          encode         1          1
+## 10:      encodelmer         1          1
+## 11:    featureunion        NA          1
+## 12:          filter         1          1
+## 13:      fixfactors         1          1
+## 14:         histbin         1          1
+## 15:             ica         1          1
+## 16:      imputehist         1          1
+## 17:      imputemean         1          1
+## 18:    imputemedian         1          1
+## 19:    imputenewlvl         1          1
+## 20:    imputesample         1          1
+## 21:       kernelpca         1          1
+##                 key input.num output.num
+```
+
+--- 
+
+---
+class: middle, center
+
+# Resources
+
+&lt;strong&gt;Documentation&lt;/strong&gt;
+
+https://github.com/mlr-org/mlr3
+
+https://mlr3.mlr-org.com/reference/
+
+https://github.com/mlr-org/mlr3pipelines
+
+https://mlr3book.mlr-org.com
+
+https://github.com/mlr-org/mlr-outreach
+
+&lt;strong&gt;Videos&lt;/strong&gt;
+
+https://www.youtube.com/watch?v=gEW5RxkbQuQ&amp;list=PL4IzsxWztPdliwImi5JLBC4BrvqxG-vcA&amp;index=39&amp;t=0s
+
+https://www.youtube.com/watch?v=wsP2hiFnDQs&amp;feature=youtu.be
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightStyle": "github",
+"highlightLines": true,
+"countIncrementalSlides": false
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();
+// adds .remark-code-has-line-highlighted class to <pre> parent elements
+// of code chunks containing highlighted lines with class .remark-code-line-highlighted
+(function(d) {
+  const hlines = d.querySelectorAll('.remark-code-line-highlighted');
+  const preParents = [];
+  const findPreParent = function(line, p = 0) {
+    if (p > 1) return null; // traverse up no further than grandparent
+    const el = line.parentElement;
+    return el.tagName === "PRE" ? el : findPreParent(el, ++p);
+  };
+
+  for (let line of hlines) {
+    let pre = findPreParent(line);
+    if (pre && !preParents.includes(pre)) preParents.push(pre);
+  }
+  preParents.forEach(p => p.classList.add("remark-code-has-line-highlighted"));
+})(document);</script>
+
+<script>
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>

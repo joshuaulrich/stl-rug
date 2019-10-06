@@ -1,0 +1,183 @@
+---
+title: "mlr3 Resampling & Benchmark"
+date: "9/29/2019 (updated: `r Sys.Date()`)"
+output: 
+    html_document:
+      toc: true
+      toc_float: true
+      toc_depth: 3
+      theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+<style>
+div.litegreen { background-color:#CEF6EC; border-radius: 5px; padding: 20px;}
+</style>
+
+```{r setup_part_one, echo = FALSE}
+# recreate tasks and learners from part 1
+library(ggplot2)
+library(ggthemes)
+library(data.table)
+
+library(mlr3)
+library(mlr3learners)
+library(mlr3viz)
+
+attrDT <- as.data.table(rsample::attrition)
+tsk_attr <- TaskClassif$new(id="attrition", backend = attrDT, 
+                            target = "Attrition", positive = "Yes")
+
+lrn_dummy  <- lrn("classif.featureless")
+lrn_rpart  <- lrn("classif.rpart", predict_type = "prob")
+lrn_ranger <- lrn("classif.ranger", num.trees=15L, predict_type = "prob")
+lrn_log    <- lrn("classif.log_reg", predict_type = "prob")
+
+msr_acc <- msr("classif.acc")
+msr_auc <- msr("classif.auc")
+```
+
+## Resampling
+
+Review mlr3 resampling methods available.
+```{r resampling_overview}
+as.data.table(mlr_resamplings)
+```
+
+Additional resampling methods for special use cases are (or will be) available in extension package:
+
+- [mlrspatiotemporal](https://github.com/mlr-org/mlr3spatiotemporal)
+
+### Holdout setup
+
+The train/predict/measure process used in the basics overview is equivalent to the "holdout" resampling method.
+
+```{r holdout}
+res_holdout <- rsmp("holdout")
+res_holdout
+
+```
+
+The 2/3 default ratio can be changed during during object construction:
+```{r holdout_2}
+rs_holdout <- rsmp("holdout", ratio = 0.75)
+rs_holdout
+```
+
+Note:
+
+- `Instantiated: FALSE` means the resampling strategy has not been applied to a dataset yet.
+
+### Holdout instantiation
+There are two methods to apply the holdout strategy on a dataset:
+
+1. manually by calling the `.$instantiate()` method on a `Task`
+
+`res_holdout$instantiate(tsk_attr)`
+
+2. automatically by passing the resampling object to `resample()`
+
+`res_rpart <- resample(tsk_attr, lrn_rpart, res_holdout)`
+
+```{r holdout_rpart}
+set.seed(3334)
+rs_rpart <- resample(tsk_attr, lrn_rpart, rs_holdout)
+rs_rpart
+rs_rpart$score(msr_auc)
+```
+
+```{r holdout_ranger}
+set.seed(3334)
+rs_ranger <- resample(tsk_attr, lrn_ranger, rs_holdout)
+rs_ranger
+rs_ranger$score(msr_auc)
+```
+
+```{r holdout_log_reg}
+set.seed(3334)
+rs_log <- resample(tsk_attr, lrn_log, rs_holdout)
+
+rs_log$score(msr_auc)
+```
+
+### Holdout evaluation
+```{r holdout_log_auc}
+rs_log$prediction()$confusion
+
+library(precrec)
+evaluated_log = evalmod(
+    scores = rs_log$prediction()$prob[, tsk_attr$positive],
+    label = rs_log$prediction()$truth,
+    posclass = tsk_attr$positive
+)
+
+ggplot2::autoplot(evaluated_log, curvetype="ROC")
+```
+
+
+## Benchmark
+
+Benchmarking is used to compare the performance of different learners 1 or more tasks and/or using 1 or more resampling strategies.
+
+### Design
+The first step in benchmarking is to prepare a design, which is a matrix of settings to execute. Settings are made up `Task`, `Learner`, and `Resampling` objects.
+
+For this example we're still working with a single task, `tsk_attr`.
+
+```{r design}
+rcv3 <- rsmp("repeated_cv", folds = 3, repeats = 5)
+
+learners <- c("classif.featureless", "classif.rpart", "classif.log_reg", "classif.ranger")
+learners <- lapply(learners, lrn, predict_type="prob",
+                   predict_sets = c("train", "test"))
+
+resamplings <- c(rs_holdout, rcv3)
+learners
+resamplings
+
+```
+
+
+```{r design_2}
+design <- benchmark_grid(tsk_attr, learners, resamplings)
+design
+
+```
+
+### Execute Benchmarks
+
+```{r benchmark_execute, include=FALSE}
+attr_bm <- benchmark(design, store_models = TRUE)
+```
+
+```{r}
+attr_bm
+
+```
+
+
+### Benchmark Evaluate
+
+```{r benchmark_evalutate}
+measures <- list(
+    msr("classif.auc", id = "auc_train", predict_sets = "train"),
+    msr("classif.auc", id = "auc_test", predict_sets = "test")
+)
+
+tab = attr_bm$aggregate(measures)
+ranks = tab[, .(learner_id, resampling_id, rank_train = rank(-auc_train), rank_test = rank(-auc_test)), by = task_id]
+
+
+ranks[, .(mrank_train = mean(rank_train), mrank_test = mean(rank_test)), 
+      by = .(learner_id, resampling_id)][order(mrank_test)]
+```
+
+
+
+### SessionInfo
+```{r sessionInfo}
+sessionInfo()
+
+```

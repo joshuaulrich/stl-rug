@@ -1,0 +1,231 @@
+---
+title: "mlr3 Tuning"
+date: "9/29/2019 (updated: `r Sys.Date()`)"
+output: 
+    html_document:
+      toc: true
+      toc_float: true
+      toc_depth: 4
+      theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r setup_part_one, echo = FALSE}
+# recreate tasks and learners from part 1
+library(ggplot2)
+library(ggthemes)
+library(data.table)
+
+library(mlr3)
+library(mlr3learners)
+library(mlr3tuning)
+library(mlr3pipelines)
+library(mlr3viz)
+
+attrDT <- as.data.table(rsample::attrition)
+tsk_attr <- TaskClassif$new(id="attrition", backend = attrDT, 
+                            target = "Attrition", positive = "Yes")
+
+lrn_dummy  <- lrn("classif.featureless")
+lrn_rpart  <- lrn("classif.rpart", predict_type = "prob")
+lrn_ranger <- lrn("classif.ranger", predict_type = "prob")
+lrn_log    <- lrn("classif.log_reg", predict_type = "prob")
+
+msr_acc <- msr("classif.acc")
+msr_auc <- msr("classif.auc")
+```
+
+```{r validate_data, include=FALSE}
+attr_newdata <- fread("../00_Data/attrition_newdata.csv")
+```
+
+# Model Optimization
+
+## Hyperparameter Tuning
+
+To maximize model performance a data-driven optimization of hyperparameters (= tuning) should be conducted. In order to tune a machine learning algorithm, we need to specify:
+
+- the search space
+- the optimization algorithm (aka tuning method)
+- an evaluation method, i.e., a resampling strategy 
+- a performance measure
+
+Hyperparameter tuning requires the extension package <strong>`mlr3tuning`</strong>
+
+The main components of `mlr3tuning` are the R6 classes:
+
+- `TuningInstance`: describes the tuning problem and stores results.
+- `Tuner`: base class for implementing tuning algorithms.
+
+### `TuningInstance`
+We can look at the available parameter for a learner with `$param_set`
+
+```{r ranger_param_set}
+as.data.table(lrn_ranger$param_set)[,.(id, class, lower, upper, default)]
+```
+We're going to only use a couple of parameters to keep it simple and quick:
+
+- `num.trees`
+- `mtry`
+
+```{r ranger_params}
+library(paradox)
+tn_rng_ps <- ParamSet$new(list(
+    ParamInt$new("num.trees", lower = 100, upper = 1000),
+    ParamInt$new("mtry", lower = 5, upper = 15)
+))
+
+tn_rng_ps
+```
+
+Next we define how to evaluate the performance by defining:
+
+- `resampling strategy`
+- `performance measure`
+
+```{r tune_perf}
+cv3 <- rsmp("cv", folds = 3)
+msr_auc <- msr("classif.auc")
+```
+
+The last step is to determine the 'budget' to solve this tuning instance by defining a `Terminator`.
+Available `Terminators` are:
+
+- `TerminatorClockTime`: terminate after a given time
+- `TerminatorEvals`: terminate after a given amount of iterations
+- `TerminatorPerfReached`:  terminate after a specific performance is reached
+- `TerminatorCombo`: A combination of the above in an ALL or ANYTHING fashion
+
+For this example we're going to give a budget of 20 iterations.
+
+```{r }
+# term_secs = term("clock_time")
+# term_secs$param_set
+# term_secs$param_set$values$secs = 5
+
+evals20 =  term("evals", n_evals = 20)
+
+rng_tn_instance <- TuningInstance$new(
+    task = tsk_attr,
+    learner = lrn_ranger,
+    resampling = cv3,
+    measures = msr_auc,
+    param_set = tn_rng_ps,
+    terminator = evals20
+)
+
+rng_tn_instance
+```
+
+### `Tuner` class
+
+The following algorithms are currently implemented in mlr3tuning:
+
+- Grid Search (`TunerGridSearch`)
+- Random Search (`TunerRandomSearch`) (Bergstra and Bengio 2012)
+- Generalized Simulated Annealing (`TunerGenSA`)
+
+```{r tune_class}
+tuner_rng <- tnr("grid_search", resolution = 10)
+```
+
+Start tuning... (output suppressed)
+
+```{r tuning, include=FALSE}
+future::plan("multiprocess")
+set.seed(0820)
+rng_tune_res <- tuner_rng$tune(rng_tn_instance)
+
+```
+
+### Review Results
+```{r}
+rng_tn_instance$archive(unnest = "params")[,c("num.trees", "mtry", "classif.auc")]
+```
+
+You could now use the optimal values to train a learner and make predictions on new data.
+
+`lrn_ranger$param_set$values = rng_tn_instance$result$params`
+
+`lrn_ranger$train(tsk_attr)`
+
+We're not going to make predictions on new data at this point, but here's what the learner looks like before and after updating the parameters:
+```{r tuned_learner}
+lrn_ranger
+
+lrn_ranger$param_set$values = rng_tn_instance$result$params
+
+lrn_ranger
+
+```
+
+And after training...
+```{r train_ranger_tuned}
+lrn_ranger$train(tsk_attr)
+
+lrn_ranger
+```
+
+### Make Predictions
+```{r}
+pred_ranger = lrn_ranger$predict_newdata(tsk_attr, attr_newdata)
+
+pred_ranger$score(c(msr_acc, msr_auc))
+
+```
+
+## Autotuner
+
+
+`future::plan("multiprocess")`
+
+```{r}
+future::plan("multiprocess")
+tuner = tnr("random_search")
+meas_auc <- msr("classif.auc")
+
+
+at_ranger = AutoTuner$new(
+    learner = lrn("classif.ranger", predict_type = "prob"),
+    resampling = cv3,
+    measures = meas_auc,
+    tune_ps = tn_rng_ps,
+    terminator = evals20,
+    tuner = tuner
+)
+
+```
+
+
+```{r}
+at_ranger
+
+```
+
+
+
+```{r include=FALSE}
+set.seed(3334)
+at_ranger$train(tsk_attr)
+
+
+```
+
+```{r}
+
+at_ranger
+
+at_pred = at_ranger$predict_newdata(tsk_attr, attr_newdata)
+
+at_pred$score(c(msr_acc, msr_auc))
+
+```
+
+### SessionInfo
+```{r sessionInfo}
+sessionInfo()
+
+```
