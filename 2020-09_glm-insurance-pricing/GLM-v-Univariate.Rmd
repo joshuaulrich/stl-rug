@@ -1,0 +1,226 @@
+---
+title: "GLM vs Univariate"
+author: "Sam Kloese"
+date: "9/2/2020"
+output: html_document
+---
+
+## Introduction
+
+The intent of this Markdown is to demonstrate the way univariate analysis will fail when there is correlation among predictor variables.  It will also demonstrate that GLM's can handle correlation reasonably well.  Correlation can be handled well by GLM's if the correlation isn't so strong that the variables are "aliased".
+
+This markdown uses theorhetical datasets based on random draws from the Poisson distribution.  The mean used in our random draws are influenced by 2 characteristics that we will later model as predictor variables in a GLM.  
+
+We look at 2 cases:
+
++ Case 1: The distribution of unique rating classes is completely uniform, and there is no correlation between predictor variables.
+
++ Case 2: The distribution of unique rating classes is not uniform, resulting in correlation between predictor variables.
+
+We demonstrate that the univariate approach is okay in Case 1, but completely fails in case 2.  GLM's by contrast work in both cases.
+
+## Load Packages
+
+We only need one package for manipulating data.  For GLM modeling, we will use the glm() function from base R.
+
+```{r package, echo=TRUE}
+library(tidyverse)
+library(rmarkdown)
+library(knitr)
+
+set.seed(23) #GOAT
+```
+
+# Case 1: Even Distribution
+
+## Case 1 Data
+
+We assume the claims generating process perfectly follows the Poisson distribution.  Real life is never that simple but we are just using simple examples to test how well univariate analysis works.  We assume the base group (drivers over 20 with 0 prior claims) has a mean frequency of 10%.  We assume young drivers have a +20% higher frequency.  We assume drivers with prior claims have +50% higher frequency.  We assume this means that young drivers with prior claims have +80% higher frequency because (1.2)*(1.5) = 1.8.
+
+We assume in case 1 that we insure 250,000 of each unique rating class for one full year.  The rating classes are as follows:
+
++  Drivers over 20 with no prior claims (mean = 10%)
+
++  Drivers 20 and under with no prior claims (mean = 12%)
+
++  Drivers over 20 with prior claims (mean = 15%)
+
++  Drivers 20 and under with prior claims (mean = 18%)
+
+The 4 subsets of data for each rating class are combined into one large dataframe.
+
+```{r data_1, echo = TRUE}
+
+Base_Data <- data.frame(age = rep("Over 20",250000),
+                        prior_claims = rep("None",250000),
+                        claims=rpois(n=250000, lambda = 0.1),
+                        exposures = rep(1,250000))
+Young_Data <- data.frame(age = rep("20 and Under",250000),
+                        prior_claims = rep("None",250000),
+                        claims=rpois(n=250000, lambda = 0.12),
+                        exposures = rep(1,250000))
+Prior_Claim_Data <- data.frame(age = rep("Over 20",250000),
+                               prior_claims = rep("1+",250000),
+                               claims=rpois(n=250000, lambda = 0.15),
+                               exposures = rep(1,250000))
+Prior_Claim_Young_Data <- data.frame(age = rep("20 and Under",250000),
+                         prior_claims = rep("1+",250000),
+                         claims=rpois(n=250000, lambda = 0.18),
+                         exposures = rep(1,250000))
+
+case_1_data <- bind_rows(Base_Data, Prior_Claim_Data, Young_Data, Prior_Claim_Young_Data)
+rm(Base_Data, Prior_Claim_Data, Prior_Claim_Young_Data, Young_Data)
+gc()
+
+glimpse(case_1_data)
+
+unique(case_1_data$age)
+unique(case_1_data$prior_claims)
+unique(case_1_data$claims)
+unique(case_1_data$exposures)
+```
+
+## Case 1 Univariate Analysis
+
+We do a quick comparison of empirical frequency to base frequency for both predictor variables.  We see that in this instance univariate analysis correctly picks out that the young relativity is near +20% and the prior claim relativity is near +50%.  This worked out because our distribution across rating classes was completely even.
+
+```{r univariate_1, echo = TRUE}
+
+univariate_young_factor <- case_1_data %>% 
+  group_by(age) %>% 
+  summarize(frequency = sum(claims)/sum(exposures))
+
+base_frequency <- univariate_young_factor$frequency[univariate_young_factor$age=="Over 20"]
+
+univariate_young_factor <- univariate_young_factor %>% 
+  mutate(freq_relativity = frequency/base_frequency)
+
+kable(univariate_young_factor)
+
+univariate_claim_factor <- case_1_data %>% 
+  group_by(prior_claims) %>% 
+  summarize(frequency = sum(claims)/sum(exposures))
+
+base_frequency <- univariate_claim_factor$frequency[univariate_claim_factor$prior_claims=="None"]
+
+univariate_claim_factor <- univariate_claim_factor %>% 
+  mutate(freq_relativity = frequency/base_frequency)
+
+kable(univariate_claim_factor)
+
+```
+
+## Case 1 GLM Analysis
+
+We run our data through a GLM model.  We demonstrate that the resulting coefficients give us the desired base of 10% frequency with relativities of near 1.2 and 1.5 for young and prior claim drivers respectively.
+
+```{r glm_1, echo = TRUE}
+
+case_1_data <- case_1_data %>% 
+  mutate(frequency = claims/exposures,
+         age = factor(age, c("Over 20","20 and Under")),
+         prior_claims = factor(prior_claims, c("None","1+")))
+
+glm_model <- glm(frequency ~ age + prior_claims,
+                 family = poisson(link = "log"),
+                 data = case_1_data)
+
+summary(glm_model)
+
+exp(glm_model$coefficients)
+
+```
+
+# Case 2: Uneven Distribution
+
+## Case 2 Data
+
+We use the same assumptions as we did in Case 1, except our mix of business is uneven.  We have more in the Drivers under 20 with claims class than in the other classes.  We have 550,000 earned exposures in this rating class and only 150,000 earned exposures in each other class.
+
+The rating classes are as follows:
+
++  Drivers over 20 with no prior claims (mean = 10%, earned exposures = 150,000)
+
++  Drivers 20 and under with no prior claims (mean = 12%, earned exposures = 150,000)
+
++  Drivers over 20 with prior claims (mean = 15%, earned exposures = 150,000)
+
++  Drivers 20 and under with prior claims (mean = 18%, earned exposures = 550,000)
+
+The 4 subsets of data for each rating class are combined into one large dataframe.
+
+```{r data_2, echo = TRUE}
+
+Base_Data <- data.frame(age = rep("Over 20",150000),
+                        prior_claims = rep("None",150000),
+                        claims=rpois(n=150000, lambda = 0.1),
+                        exposures = rep(1,150000))
+Young_Data <- data.frame(age = rep("20 and Under",150000),
+                         prior_claims = rep("None",150000),
+                         claims=rpois(n=150000, lambda = 0.12),
+                         exposures = rep(1,150000))
+Prior_Claim_Data <- data.frame(age = rep("Over 20",150000),
+                               prior_claims = rep("1+",150000),
+                               claims=rpois(n=150000, lambda = 0.15),
+                               exposures = rep(1,150000))
+Prior_Claim_Young_Data <- data.frame(age = rep("20 and Under",550000),
+                                     prior_claims = rep("1+",550000),
+                                     claims=rpois(n=550000, lambda = 0.18),
+                                     exposures = rep(1,550000))
+
+case_2_data <- bind_rows(Base_Data, Prior_Claim_Data, Young_Data, Prior_Claim_Young_Data)
+rm(Base_Data, Prior_Claim_Data, Prior_Claim_Young_Data, Young_Data)
+gc()
+
+```
+
+## Case 2 Univariate Analysis
+
+We do a quick comparison of empirical frequency to base frequency for both predictor variables.  We see that in this instance univariate analysis fails to get the frequency relativities right.  The relativity for 20 and under is +33% and the surcharge for prior claims is +55%.  The problem with this approach is our young drivers and the drivers with prior claims are correlated.  The univariate analysis no longer provides a reasonable result.
+
+```{r univariate_2, echo = TRUE}
+
+univariate_young_factor <- case_2_data %>% 
+  group_by(age) %>% 
+  summarize(frequency = sum(claims)/sum(exposures))
+
+base_frequency <- univariate_young_factor$frequency[univariate_young_factor$age=="Over 20"]
+
+univariate_young_factor <- univariate_young_factor %>% 
+  mutate(freq_relativity = frequency/base_frequency)
+
+kable(univariate_young_factor)
+
+univariate_claim_factor <- case_2_data %>% 
+  group_by(prior_claims) %>% 
+  summarize(frequency = sum(claims)/sum(exposures))
+
+base_frequency <- univariate_claim_factor$frequency[univariate_claim_factor$prior_claims=="None"]
+
+univariate_claim_factor <- univariate_claim_factor %>% 
+  mutate(freq_relativity = frequency/base_frequency)
+
+kable(univariate_claim_factor)
+
+```
+
+## Case 2 GLM Analysis
+
+We run our case 2 data through a GLM model.  We demonstrate that the resulting coefficients give us the desired base of 10% frequency with relativities of near 1.2 and 1.5 for young and prior claim drivers respectively.
+
+```{r glm_2, echo = TRUE}
+
+case_2_data <- case_2_data %>% 
+  mutate(frequency = claims/exposures,
+         age = factor(age, c("Over 20","20 and Under")),
+         prior_claims = factor(prior_claims, c("None","1+")))
+
+glm_model <- glm(frequency ~ age + prior_claims,
+                 family = poisson(link = "log"),
+                 data = case_1_data)
+
+summary(glm_model)
+
+exp(glm_model$coefficients)
+
+```

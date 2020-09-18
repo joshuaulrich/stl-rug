@@ -1,0 +1,812 @@
+---
+title: "dataOhlsson Frequency"
+author: "Sam Kloese"
+date: "9/9/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Packages
+
+Load the packages that we'll use.  The base R glm() function will be used extensively.
+
+```{r packages, echo = TRUE}
+library(insuranceData) # Sample Data
+library(ggplot2) # Data Visualizations using grammare of graphics
+library(cowplot) # Easy side by side ggplot
+library(tidyverse) # Data manipulations
+
+set.seed(23) # GOAT
+
+data(dataOhlsson)
+glimpse(dataOhlsson)
+
+```
+
+## Preliminary Adjustments
+
+I change the names to English names that I'll remember.  The data has a small number of odd records with 0 Exposures.  I simply remove them.I change the gender level "K" to "F" for "Female".  I add a column "id" field with the row number to our dataset.
+
+```{r preliminary, echo = TRUE}
+names(dataOhlsson) <- c("driver_age_int",
+                        "gender_chr", # K = Female, M = Male
+                        "parish_int",
+                        "ev_ratio_int",
+                        "vehicle_age_int",
+                        "claim_free_int",
+                        "exposures",
+                        "claims",
+                        "losses")
+
+dataOhlsson <- dataOhlsson %>% 
+  filter(exposures > .01) %>% 
+  mutate(gender_chr = if_else(as.character(gender_chr) == "K","F",as.character(gender_chr))) 
+
+
+row_index <- data.frame(id = 1:62181)
+dataOhlsson <- bind_cols(dataOhlsson, row_index)
+
+glimpse(dataOhlsson)
+```
+
+## Choose Base Level for each Predictor Variable
+
+I want to create base levels that have a good volume of exposures.  I also have a preference for round numbers. :)
+
+I start by visualizing the exposures by level in order to select one.  I create the following function to plot exposure volume.
+
+```{r e_summary, echo = TRUE}
+
+e_summary <- function(varname){
+  
+  summary <- dataOhlsson %>% 
+    group_by_at(varname) %>%
+    summarise(exposures = sum(exposures),
+              .groups = 'drop') %>% 
+    ungroup()
+  names(summary)[1]<-"my_variable"
+  
+  ggplot(data = summary) +
+    geom_col(aes(x = my_variable, y = exposures)) +
+    ggtitle(varname)
+}
+
+```
+
+### Driver Age
+
+The data is thin <16 and >75. I am going to cap between 16 and 75
+
+The largest amount of exposures is near age 50.  I will use age 50 because it is a nice round number.  However age has a large range so I also want to log the variable before modeling with it
+
+```{r base_age, echo = TRUE}
+e_summary("driver_age_int")
+
+dataOhlsson <- dataOhlsson %>% 
+  mutate(cap_age_int = case_when(as.double(driver_age_int) < 16 ~ 16,
+                             as.double(driver_age_int) > 75 ~ 75,
+                             TRUE ~ as.double(driver_age_int))) %>% 
+  mutate(transform_age_x1 = log(cap_age_int) - log(50)) %>% 
+  mutate(transform_age_x2 = transform_age_x1^2,
+         transform_age_x3 = transform_age_x1^3)
+```
+
+### Gender
+
+Male is most common.  I want to use Male as the base.
+
+```{r base_gender}
+e_summary("gender_chr")
+
+dataOhlsson <- dataOhlsson %>% 
+  mutate(gender_fctr = factor(gender_chr, levels = c("M","F")))
+```
+
+### Parish
+
+Parish 4 is the most common.  I want to use Parish 4 as the base
+
+```{r base_parish, echo = TRUE}
+e_summary("parish_int")
+
+dataOhlsson <- dataOhlsson %>% 
+  mutate(parish_fctr = factor(parish_int, levels = c(4,1,2,3,5,6,7)))
+```
+
+### EV_Ratio
+
+The largest amount of exposures is at 3. I log the variable before modeling with it.  I subtract log(3) so that 3 will be the base.
+
+```{r base_evratio, echo = TRUE}
+e_summary("ev_ratio_int")
+
+dataOhlsson <- dataOhlsson %>% 
+  mutate(transform_ev_x1 = log(ev_ratio_int) - log(3)) %>% 
+  mutate(transform_ev_x2 = transform_ev_x1^2,
+         transform_ev_x3 = transform_ev_x1^3)
+```
+
+### Vehicle_Age
+
+The largest amount of exposures is near age 15. I will use age 15.  I take the log before modeling with it.  I can't take the log of 0 so I add +1 to every value before logging.
+
+```{r veh_age, echo = TRUE}
+e_summary("vehicle_age_int")
+
+dataOhlsson <- dataOhlsson %>% 
+  mutate(transform_veh_age_x1 = log(vehicle_age_int+1) - log(15+1)) %>% 
+  mutate(transform_veh_age_x2 = transform_veh_age_x1^2,
+         transform_veh_age_x3 = transform_veh_age_x1^3)
+```
+
+### Claim_Free
+
+Claim_Free code 7 is the most common. I want to use Claim_Free 7 as the base.
+
+```{r claim_free, echo = TRUE}
+e_summary("claim_free_int")
+
+dataOhlsson <- dataOhlsson %>% 
+  mutate(claim_free_fctr = factor(claim_free_int, levels = c(7,1,2,3,4,5,6)))
+```
+
+## Building GLM's with Simple Factors
+
+### Split into Train and Test
+
+I take 40,000 rows of data for my training data.  I will validate on the remaining 22181 rows.
+
+```{r split, echo = TRUE}
+dataOhlsson_train <- slice_sample(dataOhlsson, n = 40000)
+dataOhlsson_test <- dataOhlsson %>% 
+  filter(!(id %in% dataOhlsson_train$id))
+```
+
+### GLM1: Initial Test
+
+```{r glm1, echo = TRUE}
+glm1 <- glm(claims ~ transform_age_x1 + transform_age_x2 + transform_age_x3 + 
+              gender_fctr + parish_fctr + transform_ev_x1 + transform_ev_x2 + transform_ev_x3 + 
+              transform_veh_age_x1 + transform_veh_age_x2 + transform_veh_age_x3 + claim_free_fctr,
+                   family = poisson(link = "log"),
+                   data = dataOhlsson_train,
+                   offset = log(exposures))
+dataOhlsson_train$fitted.values <- glm1$fitted.values
+
+summary(glm1)
+
+```
+
+Observations:
+
++ Some Parishes appear significant, some do not
+
++ Claim Free is not significant for any group
+
++ It looks like only the 1 degree term is significant for vehicle age
+
+### GLM2: Remove Claim Free and Vehicle Age x2, x3
+
+I keep parishes for now.  I remove Claim Free and the extra polynomials for vehicle age.
+
+```{r glm2, echo = TRUE}
+glm2 <- glm(claims ~ transform_age_x1 + transform_age_x2 + transform_age_x3 + 
+              gender_fctr + parish_fctr + transform_ev_x1 + transform_ev_x2 + transform_ev_x3 + 
+              transform_veh_age_x1,
+                   family = poisson(link = "log"),
+                   data = dataOhlsson_train,
+                   offset = log(exposures))
+dataOhlsson_train$fitted.values <- glm2$fitted.values
+
+summary(glm2)
+
+```
+
+I want to visualize how well my model fits the data by variable.  I create a function to help me look at this.
+
+```{r one_way, echo = TRUE}
+one_way_plot <- function(varname){
+  
+  summary <- dataOhlsson_train %>% 
+    group_by_at(varname) %>%
+    summarize(actual = sum(claims)/sum(exposures),
+              fitted = sum(fitted.values)/sum(exposures),
+              exposures = sum(exposures),
+              .groups = 'drop') %>% 
+    ungroup()
+  names(summary)[1]<-"my_variable"
+  
+  actual_fitted_plot <- ggplot(data = summary) +
+    geom_point(aes(x = my_variable, y = actual),col = "black",shape=4) +
+    geom_point(aes(x = my_variable, y = fitted),col = "blue",shape = 1) +
+    ggtitle(varname) +
+    ylim(c(0,.08))
+  
+  expo_plot <- ggplot(data = summary) +
+    geom_col(aes(x = my_variable, y = exposures)) +
+    ggtitle(varname)
+  
+  plot_grid(actual_fitted_plot, expo_plot, labels = "AUTO")
+}
+
+```
+
+Let's look at driver age.
+
+```{r driver_age, echo = TRUE}
+one_way_plot("driver_age_int")
+```
+
+Let's look at the indicated driver age factors from this approach.
+
+```{r driver_age2, echo = TRUE}
+
+drvr_age_beta1 <- glm2$coefficients[2]
+drvr_age_beta2 <- glm2$coefficients[3]
+drvr_age_beta3 <- glm2$coefficients[4]
+
+multiplier <- dataOhlsson_train %>% 
+  mutate(driver_multiplier = exp(drvr_age_beta1*transform_age_x1)*exp(drvr_age_beta2*transform_age_x2)*exp(drvr_age_beta3*transform_age_x3)) %>% 
+  select(driver_age_int, driver_multiplier) %>% 
+  arrange(driver_age_int) %>% 
+  distinct()
+
+ggplot(multiplier) +
+  geom_line(aes(x=driver_age_int,y=driver_multiplier),col="dark green")
+
+```
+
+I don't like this.  The factor increases after 16 and then quickly decreases again.  I try again with a 2 degree curve.
+
+### GLM3: Driver Age 2 Degree Curve
+
+```{r driver_age3, echo = TRUE}
+glm3 <- glm(claims ~ transform_age_x1 + transform_age_x2 +  
+              gender_fctr + parish_fctr + transform_ev_x1 + transform_ev_x2 + transform_ev_x3 + 
+              transform_veh_age_x1,
+                   family = poisson(link = "log"),
+                   data = dataOhlsson_train,
+                   offset = log(exposures))
+dataOhlsson_train$fitted.values <- glm3$fitted.values
+
+summary(glm3)
+
+```
+
+The 2nd degree polynomial term for age is no longer significant.  I take it out.
+
+### GLM4: Driver Age 1 Degree Curve
+
+```{r driver_age4, echo = TRUE}
+glm4 <- glm(claims ~ transform_age_x1 +   
+              gender_fctr + parish_fctr + transform_ev_x1 + transform_ev_x2 + transform_ev_x3 + 
+              transform_veh_age_x1,
+                   family = poisson(link = "log"),
+                   data = dataOhlsson_train,
+                   offset = log(exposures))
+dataOhlsson_train$fitted.values <- glm4$fitted.values
+
+summary(glm4)
+
+drvr_age_beta1 <- glm3$coefficients[2]
+
+multiplier <- dataOhlsson_train %>% 
+  mutate(driver_multiplier = exp(drvr_age_beta1*transform_age_x1)) %>% 
+  select(driver_age_int, driver_multiplier) %>% 
+  arrange(driver_age_int) %>% 
+  distinct()
+
+ggplot(multiplier) +
+  geom_line(aes(x=driver_age_int,y=driver_multiplier),col="dark green")
+
+one_way_plot("driver_age_int")
+
+```
+
+## Parish
+
+```{r parish, echo = TRUE}
+
+one_way_plot("parish_fctr")
+exp(glm4$coefficients[4:9])
+
+summary(glm4)
+```
+
+Parishes 5, 6, 7 have low exposures and the observed frequencies are similar.  I am going to group them.
+
+### GLM5: Parish Binned
+
+```{r parish2}
+
+dataOhlsson_train <- dataOhlsson_train %>% 
+  mutate(parish_bin_fctr = case_when(as.double(parish_fctr)>4 ~ "5-7",
+                                  as.double(parish_fctr)<5 ~ as.character(parish_fctr))) %>% 
+  mutate(parish_bin_fctr = factor(parish_bin_fctr, levels = c("4","1","2","3","5-7")))
+
+glm5 <- glm(claims ~ transform_age_x1 +   
+              gender_fctr + parish_bin_fctr + transform_ev_x1 + transform_ev_x2 + transform_ev_x3 + 
+              transform_veh_age_x1,
+                   family = poisson(link = "log"),
+                   data = dataOhlsson_train,
+                   offset = log(exposures))
+dataOhlsson_train$fitted.values <- glm5$fitted.values
+
+summary(glm5)
+
+one_way_plot("parish_fctr")
+
+exp(glm5$coefficients[4:7])
+```
+
+## EV_Ratio
+
+```{r ev_ratio, echo = TRUE}
+
+one_way_plot("ev_ratio_int")
+
+ev_beta1 <- glm5$coefficients[8]
+ev_beta2 <- glm5$coefficients[9]
+ev_beta3 <- glm5$coefficients[10]
+
+multiplier <- dataOhlsson_train %>% 
+  mutate(ev_multiplier = exp(ev_beta1*transform_ev_x1)*exp(ev_beta2*transform_ev_x2)*exp(ev_beta3*transform_ev_x3)) %>% 
+  select(ev_ratio_int, ev_multiplier) %>% 
+  arrange(ev_ratio_int) %>% 
+  distinct()
+
+ggplot(multiplier) +
+  geom_line(aes(x=ev_ratio_int,y=ev_multiplier),col="dark green")
+
+```
+
+There are some reversals in how I thought the multiplier would look.  I am going to look at what happens when I model each EV Ratio as it's own factor.
+
+### GLM6: Engine Vehicle Ratio Categorical
+
+```{r ev_ratio2, echo = TRUE}
+
+dataOhlsson_train <- dataOhlsson_train %>% 
+  mutate(ev_ratio_fctr = as.character(ev_ratio_int)) %>% 
+  mutate(ev_ratio_fctr = factor(ev_ratio_fctr, levels = c("3","1","2","4","5","6","7")))
+
+glm6 <- glm(claims ~ transform_age_x1 +   
+              gender_fctr + parish_bin_fctr + ev_ratio_fctr + 
+              transform_veh_age_x1,
+                   family = poisson(link = "log"),
+                   data = dataOhlsson_train,
+                   offset = log(exposures))
+dataOhlsson_train$fitted.values <- glm6$fitted.values
+
+summary(glm6)
+
+```
+
+The betas 1 - 4 move up and down.
+The beta for 5 is higher than each of them in 1-4.
+The beta is largest for 6.  The data is extremely thin in 7.
+
+I will bin them in "1-4", "5", and "6-7"
+
+### GLM7: Parish Binned
+
+```{r ev_ratio3, echo= TRUE}
+
+dataOhlsson_train <- dataOhlsson_train %>% 
+  mutate(ev_ratio_fctr = as.numeric(ev_ratio_fctr)) %>% 
+  mutate(ev_ratio_bin_fctr = case_when(ev_ratio_fctr < 5 ~ "1-4",
+                                    ev_ratio_fctr == 5 ~ "5",
+                                    ev_ratio_fctr > 5 ~ "6-7")) %>% 
+  mutate(ev_ratio_bin_fctr = factor(ev_ratio_bin_fctr, levels = c("1-4","5","6-7")))
+
+glm7 <- glm(claims ~ transform_age_x1 +   
+              gender_fctr + parish_bin_fctr + ev_ratio_bin_fctr + 
+              transform_veh_age_x1,
+                   family = poisson(link = "log"),
+                   data = dataOhlsson_train,
+                   offset = log(exposures))
+dataOhlsson_train$fitted.values <- glm7$fitted.values
+
+summary(glm7)
+
+exp(glm7$coefficients[8:9])
+
+one_way_plot("ev_ratio_fctr")
+
+```
+
+## Vehicle Age
+
+```{r veh_age2, echo = TRUE}
+
+one_way_plot("vehicle_age_int")
+
+```
+
+There isn't a lot of exposures past 25
+I will cap the x values at 25
+
+### Final GLM Simple
+
+```{r veh_age3, echo = TRUE}
+
+dataOhlsson_train <- dataOhlsson_train %>% 
+  mutate(vehicle_age_cap_int = if_else(vehicle_age_int > 25, as.double(25), as.double(vehicle_age_int))) %>% 
+  mutate(transform_veh_age_x1 = log(vehicle_age_cap_int+1) - log(15+1)) 
+
+glm_simple <- glm(claims ~ transform_age_x1 +   
+              gender_fctr + parish_bin_fctr + ev_ratio_bin_fctr + 
+              transform_veh_age_x1,
+                   family = poisson(link = "log"),
+                   data = dataOhlsson_train,
+                   offset = log(exposures))
+dataOhlsson_train$fitted.values <- glm_simple$fitted.values
+
+summary(glm_simple)
+
+one_way_plot("vehicle_age_cap_int")
+
+```
+
+## Look at the One Way Plots again
+
+```{r one_way2, echo = TRUE}
+one_way_plot("driver_age_int")
+one_way_plot("gender_fctr")
+one_way_plot("parish_int")
+one_way_plot("ev_ratio_int")
+one_way_plot("vehicle_age_cap_int")
+one_way_plot("claim_free_int")
+```
+
+## Adding an Interaction Term
+
+Create a two-way plot function
+
+```{r two_way, echo = TRUE}
+
+two_way_plot <- function(variable1, variable2, predictions1, claims1, exposures1){
+  table <- data.frame(variable1 = variable1,
+                     variable2 = variable2,
+                     predictions = predictions1,
+                     claims = claims1,
+                     exposures = exposures1)
+  total_expos <- sum(table$exposures)
+  
+  table2 <- table %>% 
+    group_by(variable1, variable2) %>% 
+    summarize(obs_freq = sum(claims)/sum(exposures),
+              fit_freq = sum(predictions)/sum(exposures),
+              exposures = sum(exposures),
+              .groups = 'drop') %>% 
+    ungroup()
+
+  ggplot(data = table2) +
+    geom_point(aes(x = variable1, y = obs_freq), col = "black", shape = 4) +
+    geom_point(aes(x = variable1, y = fit_freq), col = "blue", shape = 1) +
+    ylim(0,0.1) +
+    facet_wrap(~ variable2)
+  
+} 
+```
+
+Check our fit on driver age by gender
+
+```{r age_gender, echo = TRUE}
+two_way_plot(dataOhlsson_train$driver_age_int,
+        dataOhlsson_train$gender_chr,
+        dataOhlsson_train$fitted.values,
+        dataOhlsson_train$claims,
+        dataOhlsson_train$exposures)
+```
+
+It's a little hard to see what is going because the ages are so granular.  We bin the ages and then look at the two way plot again.
+
+```{r age_gender2, echo = TRUE}
+
+dataOhlsson_train <- dataOhlsson_train %>% 
+  mutate(driver_age_bin_chr = case_when(driver_age_int < 25 ~ "16-24",
+                             driver_age_int >= 25 & driver_age_int < 35 ~ "25-34",
+                             driver_age_int >= 35 & driver_age_int < 45 ~ "35-44",
+                             driver_age_int >= 45 & driver_age_int < 55 ~ "45-54",
+                             driver_age_int >= 55 & driver_age_int < 65 ~ "55-64",
+                             driver_age_int >= 65 & driver_age_int < 75 ~ "65-74",
+                             driver_age_int >= 75 ~ "75+"))
+
+two_way_plot(dataOhlsson_train$driver_age_bin_chr,
+        dataOhlsson_train$gender_chr,
+        dataOhlsson_train$fitted.values,
+        dataOhlsson_train$claims,
+        dataOhlsson_train$exposures)
+
+```
+
+The model fit for female drivers is not good for each age.  We decide we need a Gender and Driver Age interaction.  
+
+```{r glm_interaction, echo = TRUE}
+
+glm_interaction <- glm(claims ~ transform_age_x1 + 
+                         gender_fctr + parish_bin_fctr + ev_ratio_bin_fctr + 
+                         transform_veh_age_x1 + gender_fctr*transform_age_x1,
+            family = poisson(link = "log"),
+            data = dataOhlsson_train,
+            offset = log(exposures))
+dataOhlsson_train$glm_int_fitted_values <- glm_interaction$fitted.values
+
+two_way_plot(dataOhlsson_train$driver_age_bin_chr,
+        dataOhlsson_train$gender_chr,
+        dataOhlsson_train$glm_int_fitted_values,
+        dataOhlsson_train$claims,
+        dataOhlsson_train$exposures)
+```
+
+## Validating on Holdout Data
+
+```{r holdout, echo = TRUE}
+
+dataOhlsson_test <- dataOhlsson_test %>% 
+  mutate(parish_bin_fctr = case_when(as.double(parish_fctr)>4 ~ "5-7",
+                                  as.double(parish_fctr)<5 ~ as.character(parish_fctr))) %>% 
+  mutate(parish_bin_fctr = factor(parish_bin_fctr, levels = c("4","1","2","3","5-7"))) %>% 
+  mutate(ev_ratio_bin_fctr = as.numeric(ev_ratio_int)) %>% 
+  mutate(ev_ratio_bin_fctr = case_when(ev_ratio_bin_fctr < 5 ~ "1-4",
+                                    ev_ratio_bin_fctr == 5 ~ "5",
+                                    ev_ratio_bin_fctr > 5 ~ "6-7")) %>% 
+  mutate(ev_ratio_bin_fctr = factor(ev_ratio_bin_fctr, levels = c("1-4","5","6-7"))) %>% 
+  mutate(vehicle_age_cap_int = if_else(vehicle_age_int > 25, as.double(25), as.double(vehicle_age_int))) %>% 
+  mutate(transform_veh_age_x1 = log(vehicle_age_cap_int+1) - log(15+1)) 
+
+dataOhlsson_test$glm_int_fitted_values <- predict(glm_interaction,
+                                                  newdata = dataOhlsson_test,
+                                                  type = "response")
+
+one_way_plot <- function(varname){
+  
+  summary <- dataOhlsson_test %>% 
+    group_by_at(varname) %>%
+    summarize(actual = sum(claims)/sum(exposures),
+              fitted = sum(glm_int_fitted_values)/sum(exposures),
+              exposures = sum(exposures),
+              .groups = 'drop') %>% 
+    ungroup()
+  names(summary)[1]<-"my_variable"
+  
+  actual_fitted_plot <- ggplot(data = summary) +
+    geom_point(aes(x = my_variable, y = actual),col = "black",shape=4) +
+    geom_point(aes(x = my_variable, y = fitted),col = "blue",shape = 1) +
+    ggtitle(varname) +
+    ylim(c(0,.08))
+  
+  expo_plot <- ggplot(data = summary) +
+    geom_col(aes(x = my_variable, y = exposures)) +
+    ggtitle(varname)
+  
+  plot_grid(actual_fitted_plot, expo_plot, labels = "AUTO")
+}
+
+one_way_plot("driver_age_int")
+one_way_plot("gender_fctr")
+one_way_plot("parish_int")
+one_way_plot("ev_ratio_int")
+one_way_plot("vehicle_age_cap_int")
+one_way_plot("claim_free_int")
+
+```
+
+## Comparing Models
+
+I create a couple more models for comparison purposes.
+
+### Underfit model
+
+This is a model, where the only rating variable is drivers 25 and under
+
+```{r underfit, echo = TRUE}
+dataOhlsson_train <- dataOhlsson_train %>% 
+  mutate(under25_fctr = if_else(driver_age_int < 25, "Under 25", "25 and Over")) %>% 
+  mutate(under25_fctr = factor(under25_fctr, levels = c("25 and Over","Under 25")))
+
+glm_underfit <- glm(claims ~ under25_fctr,
+                    family = poisson(link = "log"),
+                    data = dataOhlsson_train,
+                    offset = log(exposures))
+
+dataOhlsson_train$glm_underfit_fitted_values <- glm_underfit$fitted.values
+
+```
+
+### Overfit model
+
+This is a model where there is a beta parameter for every non-base level.  Every rating variable is treated like a categorical variable.
+
+```{r overfit, echo = TRUE}
+dataOhlsson_train <- dataOhlsson_train %>% 
+  mutate(driver_age_int_fctr = factor(driver_age_int, levels = c(50,0:49,51:100)),
+         ev_ratio_int_fctr = factor(ev_ratio_int, levels = c(3,1,2,4,5,6,7)),
+         vehicle_age_int_fctr = factor(vehicle_age_int, levels = c(15,0:14,16:100)))
+
+glm_overfit <- glm(claims ~ driver_age_int_fctr + gender_fctr + parish_fctr + 
+                     ev_ratio_int_fctr + vehicle_age_int_fctr + claim_free_fctr,
+                   family = poisson(link = "log"),
+                   data = dataOhlsson_train,
+                   offset = log(exposures))  
+
+dataOhlsson_train$glm_overfit_fitted_values <- glm_overfit$fitted.values
+
+```
+
+### Deviance checks on the training data
+
+```{r deviance, echo = TRUE}
+glm_simple$null.deviance
+
+glm_underfit$deviance
+glm_simple$deviance
+glm_interaction$deviance
+glm_overfit$deviance
+
+glm_underfit$aic
+glm_simple$aic
+glm_interaction$aic
+glm_overfit$aic
+
+```
+
+### Deviance checks on the Test Data
+
+# Apply same transformations to test data
+
+```{r deviance2, echo = TRUE}
+
+dataOhlsson_test <- dataOhlsson_test %>% 
+  filter(driver_age_int != 0 & driver_age_int != 87) %>% 
+  filter(!(vehicle_age_int %in% c(72,76,77,82,83)))
+
+dataOhlsson_test <- dataOhlsson_test %>% 
+  mutate(under25_fctr = if_else(driver_age_int < 25, "Under 25", "25 and Over")) %>% 
+  mutate(under25_fctr = factor(under25_fctr, levels = c("25 and Over","Under 25"))) %>% 
+  mutate(driver_age_int_fctr = factor(driver_age_int, levels = c(50,0:49,51:100)),
+         ev_ratio_int_fctr = factor(ev_ratio_int, levels = c(3,1,2,4,5,6,7)),
+         vehicle_age_int_fctr = factor(vehicle_age_int, levels = c(15,0:14,16:100)))
+  
+dataOhlsson_test$glm_underfit_fitted_values <- predict(glm_underfit, newdata = dataOhlsson_test, type = "response")
+dataOhlsson_test$glm_overfit_fitted_values <- predict(glm_overfit, newdata = dataOhlsson_test, type = "response")
+
+# Deviance
+dataOhlsson_test <- dataOhlsson_test %>% 
+  mutate(underfit_diff_squared = (claims - glm_underfit_fitted_values)^2,
+         int_diff_squared = (claims - glm_int_fitted_values)^2,
+         overfit_diff_squared = (claims - glm_overfit_fitted_values)^2)
+
+sum(dataOhlsson_test$underfit_diff_squared)
+sum(dataOhlsson_test$int_diff_squared)
+sum(dataOhlsson_test$overfit_diff_squared)
+```
+
+## Quantile Plot
+
+```{r quantile_plot}
+
+quantile_plot <- function(predictions1,claims1,exposures1,n = 20){
+  table<-data.frame(predictions = predictions1,
+                    claims = claims1,
+                    exposures = exposures1)
+  total_expos <- sum(table$exposures)
+  
+  table2 <- table %>% 
+    mutate(fit_freq = predictions/exposures) %>% 
+    arrange(fit_freq) %>% 
+    mutate(running_total = cumsum(exposures)) %>% 
+    mutate(my_quantiles = floor(n * running_total/total_expos)+1) %>% 
+    mutate(my_quantiles = if_else(my_quantiles > n, n, my_quantiles)) %>% 
+    ungroup()
+  
+  table3 <- table2 %>% 
+    group_by(my_quantiles) %>% 
+    summarize(quantile_fitted = sum(predictions)/sum(exposures),
+              quantile_actual = sum(claims)/sum(exposures),
+              quantile_exposures = sum(exposures),
+              .groups = 'drop') %>% 
+    ungroup()
+  
+  quant_plot1 <- ggplot(table3) +
+    geom_line(aes(x = my_quantiles, y = quantile_fitted),col="blue") +
+    geom_point(aes(x = my_quantiles, y = quantile_actual),col="black")
+  
+  quant_plot2 <- ggplot(table3) +
+    geom_col(aes(x = my_quantiles, y = quantile_exposures))
+  
+  plot_grid(quant_plot1, quant_plot2, labels = "AUTO")
+} 
+
+# Quantile plots on holdout data
+
+quantile_plot(dataOhlsson_test$glm_underfit_fitted_values,
+              dataOhlsson_test$claims,
+              dataOhlsson_test$exposures)
+
+quantile_plot(dataOhlsson_test$glm_int_fitted_values,
+              dataOhlsson_test$claims,
+              dataOhlsson_test$exposures)
+
+quantile_plot(dataOhlsson_test$glm_overfit_fitted_values,
+              dataOhlsson_test$claims,
+              dataOhlsson_test$exposures)
+
+```
+
+## Double Lift Charts
+
+A double lift chart is a way to compare 2 candidate models. A double lift chart highlights the records in the leftmost and rightmost bins as the areas where the models disagree the most.  The model that matches the observed frequency better is the better model.  
+
+Here is a how a double lift chart works in words:
++ Predictions are made on both models
++ A ratio between the model predictions is calculated
++ We bucket the ratio into quantiles
++ We compare model 1 predictions vs model 2 predictions vs the actual
++ The model that matches actual better is the preferred model
+
+```{r double_lift}
+
+double_lift <- function(predictions_1, predictions_2, claims1, exposures1,n = 20){
+  table<-data.frame(predictions1 = predictions_1,
+                    predictions2 = predictions_2,
+                    claims = claims1,
+                    exposures = exposures1)
+  total_expos <- sum(table$exposures)
+  
+  table2 <- table %>% 
+    mutate(fit_freq1 = predictions1/exposures,
+           fit_freq2 = predictions2/exposures) %>%
+    mutate(fit_ratio = fit_freq1/fit_freq2) %>% 
+    arrange(fit_ratio) %>% 
+    mutate(running_total = cumsum(exposures)) %>% 
+    mutate(my_quantiles = floor(n * running_total/total_expos)+1) %>% 
+    mutate(my_quantiles = if_else(my_quantiles > n, n, my_quantiles)) %>% 
+    ungroup()
+  
+  table3 <- table2 %>% 
+    group_by(my_quantiles) %>% 
+    summarize(quantile_fitted1 = sum(predictions1)/sum(exposures),
+              quantile_fitted2 = sum(predictions2)/sum(exposures),
+              quantile_actual = sum(claims)/sum(exposures),
+              quantile_exposures = sum(exposures),
+              .groups = 'drop') %>% 
+    ungroup()
+  
+  quant_plot1 <- ggplot(table3) +
+    geom_line(aes(x = my_quantiles, y = quantile_fitted1),col="blue") +
+    geom_line(aes(x = my_quantiles, y = quantile_fitted2),col="green") +
+    geom_point(aes(x = my_quantiles, y = quantile_actual),col="black")
+  
+  quant_plot2 <- ggplot(table3) +
+    geom_col(aes(x = my_quantiles, y = quantile_exposures))
+  
+  plot_grid(quant_plot1, quant_plot2, labels = "AUTO")
+} 
+
+double_lift(dataOhlsson_test$glm_underfit_fitted_values, # blue
+            dataOhlsson_test$glm_int_fitted_values, # green
+            dataOhlsson_test$claims,
+            dataOhlsson_test$exposures,
+            n = 20)
+
+double_lift(dataOhlsson_test$glm_overfit_fitted_values, # blue
+            dataOhlsson_test$glm_int_fitted_values, # green
+            dataOhlsson_test$claims,
+            dataOhlsson_test$exposures, 
+            n = 20)
+```
+
+## Final Conclusion
+
+The glm with the interaction and the overfit glm looked the best.  Ultimately I would argue that the glm with the interaction is better, for the following reasons:
+
++ The AIC for the glm with the interaction was lower
++ The deviance on test data was lower for the glm with the interaction
++ The quantile plot for the overfit glm looked like it was overfitting low and high quantiles more
++ The double lift chart appeared to be sort of a draw, which ultimately favors the smaller model
+
