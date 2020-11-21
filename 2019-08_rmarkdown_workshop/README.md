@@ -9,4 +9,4 @@ Improving research reproducibility is a big task. We suggest three strategies:
 2. publicly share statistical code—or adequate details about methodology in the main text or supplemental materials—for each publication or report
 3. publicly share original, de-identified, or simulated data whenever possible
 
-You can find all of Jenine's on [her GitHub repo](https://github.com/jenineharris/stl_rug_08072019).
+You can find all of Jenine's presentation materials on [her GitHub repo](https://github.com/jenineharris/stl_rug_08072019).
